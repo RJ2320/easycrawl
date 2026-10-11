@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 import PySide6
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+from importlib.metadata import PackageNotFoundError
 
 root = os.path.abspath(os.path.join(SPECPATH, ".."))
 sys.path.insert(0, root)
@@ -23,13 +24,25 @@ if sys.platform == "win32":
 icon = {"darwin": "icon.icns", "win32": "icon.ico"}.get(sys.platform, "icon.png")
 icon = os.path.join(SPECPATH, icon) if os.path.exists(os.path.join(SPECPATH, icon)) else None
 
+license_data = [(os.path.join(root, "LICENSE"), "licenses"),
+                (os.path.join(SPECPATH, "licenses"), "licenses")]
+for dependency in ("Pillow", "numpy", "openpyxl", "fonttools", "certifi", "PySide6",
+                   "PySide6_Essentials", "PySide6_Addons", "shiboken6"):
+    try:
+        license_data += copy_metadata(dependency)
+    except PackageNotFoundError:
+        pass
+python_license = os.path.join(sys.base_prefix, "LICENSE.txt")
+if os.path.isfile(python_license):
+    license_data.append((python_license, "licenses/python"))
+
 a = Analysis(
     [os.path.join(SPECPATH, "launch.py")],
     pathex=[root],
     binaries=binaries,
     datas=[(os.path.join(root, "examples", "sample_crawl.csv"), "examples"),
            (os.path.join(root, "crawl", "ui", "assets", "icon.png"), "crawl/ui/assets"),
-           (os.path.join(root, "LICENSE"), "licenses")],
+           *license_data],
     hiddenimports=collect_submodules("crawl"),
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore",
               "PySide6.QtQuick", "PySide6.QtQml", "PySide6.QtMultimedia", "PySide6.QtCharts",

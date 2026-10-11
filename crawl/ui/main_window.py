@@ -26,7 +26,7 @@ from .snapshot_dialog import SnapshotDialog
 from .sheet_editor import SheetEditor
 from .music_panel import MusicPanel
 from .logo_workspace import LogoWorkspace
-from .widgets import LOGO_DEFAULTS, PreviewPanel, StyleEditor, _dspin, _spin
+from .widgets import LOGO_DEFAULTS, PreviewPanel, StyleEditor, _dspin, _spin, panel_expand_icon
 from .worker import RebuildWorker, RenderWorker, SheetFetchWorker, UpdateCheckWorker
 
 FPS_CHOICES = [23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0]
@@ -668,7 +668,9 @@ class MainWindow(QMainWindow):
             self._restore_panel_layout()
             return
         self._panel_restore = (self.windowState(), self._panel_split.sizes(),
-                               self.tabs.currentIndex(), self.preview_stack.currentIndex())
+                               self.tabs.currentIndex(), self.preview_stack.currentIndex(), self.geometry())
+        anchor = self.sheet_editor.table.scroll_anchor()
+        self.setUpdatesEnabled(False)
         self._expanded_panel = panel
         self._exit_expansion.setEnabled(True)
         self._app_header.hide()
@@ -676,19 +678,26 @@ class MainWindow(QMainWindow):
         if panel == "sheet":
             self.tabs.setCurrentWidget(self.sheet_editor)
             self.preview_stack.hide()
-            self.sheet_editor.expand_button.setText("Restore")
+            self.sheet_editor.expand_button.setIcon(panel_expand_icon(restoring=True))
+            self.sheet_editor.expand_button.setAccessibleName("Restore spreadsheet")
             self.sheet_editor.expand_button.setToolTip("Return to the normal layout (Esc)")
         else:
             self.preview_stack.setCurrentWidget(self.preview)
             self.tabs.hide()
-            self.preview.expand_button.setText("Restore")
+            self.preview.expand_button.setIcon(panel_expand_icon(restoring=True))
+            self.preview.expand_button.setAccessibleName("Restore crawl preview")
             self.preview.expand_button.setToolTip("Return to the normal layout (Esc)")
-        self.showFullScreen()
+        if not self.isMaximized() and not self.isFullScreen():
+            self.showMaximized()
+        self.setUpdatesEnabled(True)
+        QTimer.singleShot(0, lambda: self.sheet_editor.table.restore_scroll_anchor(anchor))
 
     def _restore_panel_layout(self):
         if self._expanded_panel is None:
             return
-        state, sizes, tab, preview = self._panel_restore
+        state, sizes, tab, preview, geometry = self._panel_restore
+        anchor = self.sheet_editor.table.scroll_anchor()
+        self.setUpdatesEnabled(False)
         self._expanded_panel = None
         self._exit_expansion.setEnabled(False)
         self.tabs.show()
@@ -698,11 +707,17 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(tab)
         self.preview_stack.setCurrentIndex(preview)
         self.setWindowState(state)
+        if state == Qt.WindowNoState:
+            self.setGeometry(geometry)
         self._panel_split.setSizes(sizes)
-        self.sheet_editor.expand_button.setText("Expand")
+        self.sheet_editor.expand_button.setIcon(panel_expand_icon())
+        self.sheet_editor.expand_button.setAccessibleName("Expand spreadsheet")
         self.sheet_editor.expand_button.setToolTip("Show the spreadsheet full screen")
-        self.preview.expand_button.setText("Expand")
+        self.preview.expand_button.setIcon(panel_expand_icon())
+        self.preview.expand_button.setAccessibleName("Expand crawl preview")
         self.preview.expand_button.setToolTip("Show the crawl preview full screen")
+        self.setUpdatesEnabled(True)
+        QTimer.singleShot(0, lambda: self.sheet_editor.table.restore_scroll_anchor(anchor))
 
     # ---- header ------------------------------------------------------------
 

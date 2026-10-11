@@ -5,6 +5,9 @@ are GPL (they include x264 for H.264); see the README's licence note.
 """
 import io
 import os
+import platform
+import ssl
+import certifi
 import stat
 import sys
 import tarfile
@@ -15,15 +18,17 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "ffmpeg"
 
-MAC = {"ffmpeg": "https://evermeet.cx/ffmpeg/getrelease/zip",
-       "ffprobe": "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"}
+MAC_ARCH = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "amd64"
+MAC = {name: f"https://ffmpeg.martin-riedl.de/redirect/latest/macos/{MAC_ARCH}/release/{name}.zip"
+       for name in ("ffmpeg", "ffprobe")}
 WIN = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
 LINUX = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
 
 
 def fetch(url: str) -> bytes:
     print("downloading", url)
-    with urllib.request.urlopen(url, timeout=120) as r:
+    request = urllib.request.Request(url, headers={"User-Agent": "EasyCrawl-build"})
+    with urllib.request.urlopen(request, timeout=120, context=ssl.create_default_context(cafile=certifi.where())) as r:
         return r.read()
 
 

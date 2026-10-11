@@ -840,6 +840,25 @@ def create_frame_view():
     return GpuFrameView()
 
 
+def panel_expand_icon(restoring=False):
+    """Small high-contrast corner/overlapping-window icons for the dark toolbar."""
+    pixmap = QPixmap(18, 18)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setPen(QPen(QColor(theme.TEXT), 1.5))
+    painter.setBrush(Qt.NoBrush)
+    if restoring:
+        painter.drawPolyline([QPointF(7, 5), QPointF(7, 3), QPointF(15, 3), QPointF(15, 11), QPointF(13, 11)])
+        painter.drawRect(QRectF(3, 6, 9, 9))
+    else:
+        for points in (((3, 7), (3, 3), (7, 3)), ((11, 3), (15, 3), (15, 7)),
+                       ((15, 11), (15, 15), (11, 15)), ((7, 15), (3, 15), (3, 11))):
+            painter.drawPolyline([QPointF(x, y) for x, y in points])
+    painter.end()
+    return QIcon(pixmap)
+
+
 class PreviewPanel(QWidget):
     """The frame, the logo inspector that floats over it, and the transport."""
 
@@ -901,8 +920,10 @@ class PreviewPanel(QWidget):
         preview_header.addWidget(QLabel("Crawl preview"))
         preview_header.addStretch(1)
         self.expand_button = QToolButton()
-        self.expand_button.setText("Expand")
-        self.expand_button.setToolTip("Show the crawl preview full screen")
+        self.expand_button.setIcon(panel_expand_icon())
+        self.expand_button.setAccessibleName("Expand crawl preview")
+        self.expand_button.setFocusPolicy(Qt.NoFocus)
+        self.expand_button.setToolTip("Expand crawl preview")
         self.expand_button.setProperty("flat", True)
         preview_header.addWidget(self.expand_button)
         lay.addLayout(preview_header)

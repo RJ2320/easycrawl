@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogBut
 
 from .. import arrangements, ingest
 from .arrangement_table import ArrangementTable
-from .widgets import _spin
+from .widgets import _spin, panel_expand_icon
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
@@ -109,7 +109,10 @@ class SheetEditor(QWidget):
         actions.addWidget(_tool('Layout', 'How rows with only column B filled are set', layout_menu))
         actions.addWidget(self.arrange_button)
         actions.addStretch(1)
-        self.expand_button = _tool('Expand', 'Show the spreadsheet full screen')
+        self.expand_button = _tool('', 'Expand spreadsheet')
+        self.expand_button.setIcon(panel_expand_icon())
+        self.expand_button.setAccessibleName('Expand spreadsheet')
+        self.expand_button.setFocusPolicy(Qt.NoFocus)
         actions.addWidget(self.expand_button)
         actions.addWidget(_tool('···', 'More', more_menu))
 

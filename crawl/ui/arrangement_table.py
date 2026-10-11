@@ -207,8 +207,8 @@ class ArrangementTable(QTableWidget):
         # the columns settle (not on every pixel of a drag).
         self._remeasure = QTimer(self)
         self._remeasure.setSingleShot(True)
-        self._remeasure.setInterval(60)
-        self._remeasure.timeout.connect(self.resizeRowsToContents)
+        self._remeasure.setInterval(120)
+        self._remeasure.timeout.connect(self._remeasure_rows)
         header.sectionResized.connect(lambda *_: self._remeasure.start())
 
     # ---- lookups the delegate paints from ----------------------------------
@@ -246,6 +246,32 @@ class ArrangementTable(QTableWidget):
         return next((o for o in self.project.overrides if o['start'] <= row <= o['end']), None)
 
     # ---- behaviour ---------------------------------------------------------
+
+    def scroll_anchor(self):
+        row = self.rowAt(0)
+        return (row, self.rowViewportPosition(row), self.horizontalScrollBar().value()) if row >= 0 else None
+
+    def restore_scroll_anchor(self, anchor):
+        if anchor is None:
+            return
+        row, offset, horizontal = anchor
+        if row < self.rowCount() and not self.isRowHidden(row):
+            bar = self.verticalScrollBar()
+            bar.setValue(bar.value() + self.rowViewportPosition(row) - offset)
+        self.horizontalScrollBar().setValue(horizontal)
+
+    def _remeasure_rows(self):
+        # Changing wrapped row heights must not move the credit being read.
+        anchor = self.scroll_anchor()
+        self.setUpdatesEnabled(False)
+        try:
+            self.resizeRowsToContents()
+            self.restore_scroll_anchor(anchor)
+        finally:
+            self.setUpdatesEnabled(True)
+        # Scrollbar visibility can resize the stretched column during measurement.
+        # Its final geometry has already been measured; avoid a second full pass.
+        self._remeasure.stop()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
