@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+
+# Rendered output
+render/
+examples/render/
+
+# One-off patch scripts from an earlier session; already applied to the code
+work/
+build/
+dist/
+
+# Generated platform packaging icons (runtime artwork lives in crawl/ui/assets)
+packaging/icon.png
+packaging/icon.ico
+packaging/icon.icns
+
+# Downloaded video binaries are bundled during release builds
+packaging/ffmpeg/

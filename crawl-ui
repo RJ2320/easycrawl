@@ -1,0 +1,8 @@
+#!/bin/sh
+# Launch the Crawl desktop app.
+#
+# Runs Python with -E so PYTHONPATH is ignored: the shell profile adds DaVinci
+# Resolve's scripting folder to it, and if the launching shell can't read that
+# folder Python refuses to start at all. The app doesn't need it.
+cd "$(dirname "$0")" || exit 1
+exec .venv/bin/python -E -m crawl.ui "$@"

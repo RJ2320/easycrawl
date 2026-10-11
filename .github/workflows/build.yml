@@ -1,0 +1,141 @@
+# Tests on every push; downloadable apps when a version tag is pushed (or on request).
+#
+#   git tag v0.2.0 && git push origin v0.2.0   → Mac + Windows apps on the Releases page
+#
+# Mac minutes cost 10x Linux ones, so apps are only built for tags and manual runs.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: System libraries Qt and ffmpeg need
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg fonts-dejavu-core libegl1 libopengl0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libdbus-1-3 libfontconfig1
+      - run: pip install -e ".[ui,dev]"
+      - run: python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  build:
+    # Apps are built only for version tags and manual runs.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14          # Apple silicon
+            name: mac
+          - os: windows-latest
+            name: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[ui,dev]" pyinstaller
+      - name: Test relinking, export naming, and logo color
+        run: python -m pytest tests/test_relink_output.py tests/test_logo_workspace.py -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - name: Fetch ffmpeg to bundle
+        run: python packaging/fetch_ffmpeg.py
+      - name: Icon
+        run: python packaging/make_icon.py
+      - name: Build
+        run: pyinstaller packaging/easycrawl.spec --noconfirm
+      - name: Self-test (Mac)
+        if: matrix.name == 'mac'
+        run: |
+          dist/EasyCrawl.app/Contents/MacOS/EasyCrawl --selftest
+          dist/EasyCrawl.app/Contents/MacOS/EasyCrawl --smoke-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - name: Self-test (Windows)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          foreach ($check in @('--selftest', '--smoke-test')) {
+            $p = Start-Process -FilePath dist/EasyCrawl/EasyCrawl.exe -ArgumentList $check -PassThru -Wait
+            if ($p.ExitCode -ne 0) { throw "Packaged check failed: $check" }
+          }
+      - name: Windows installer
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          $version = python -c "from crawl import __version__; print(__version__)"
+          $compiler = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "${env:ProgramFiles}\Inno Setup 7\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (!$compiler) { throw "Inno Setup compiler is missing from the Windows runner" }
+          & $compiler "/DAppVersion=$version" packaging/windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+          Copy-Item dist/installer/*.exe .
+      - name: Mac disk image
+        if: matrix.name == 'mac'
+        run: |
+          VERSION=$(python -c 'from crawl import __version__; print(__version__)')
+          mkdir -p build/dmg
+          cp -R dist/EasyCrawl.app build/dmg/
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname EasyCrawl -srcfolder build/dmg -ov -format UDZO "EasyCrawl-$VERSION-mac.dmg"
+      - name: Zip (Mac)
+        if: matrix.name == 'mac'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/EasyCrawl.app EasyCrawl-mac.zip
+      - name: Zip (Windows)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/EasyCrawl -DestinationPath EasyCrawl-windows.zip
+      - uses: actions/upload-artifact@v5
+        with:
+          name: EasyCrawl-${{ matrix.name }}
+          path: |
+            EasyCrawl-${{ matrix.name }}.zip
+            EasyCrawl-Setup-*-windows.exe
+            EasyCrawl-*-mac.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'NOTES'
+          **Mac:** download `EasyCrawl-*-mac.dmg`, open it, and drag `EasyCrawl.app` onto Applications.
+          The app is not
+          notarized with Apple, so the first time macOS will say it can't verify the developer: right-click
+          the app → Open → Open. If it instead says the app is "damaged", run
+          `xattr -cr /Applications/EasyCrawl.app` in Terminal once and open it again.
+
+          **Windows:** download `EasyCrawl-Setup-*-windows.exe` and run it to install EasyCrawl with a Start menu
+          shortcut and an optional desktop shortcut. Future installers upgrade the same installation.
+          SmartScreen may warn about an unrecognised app: More info → Run anyway.
+
+          ffmpeg is included. Fonts are not: the fonts a project uses must be installed on the machine.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" artifacts/*.exe artifacts/*.dmg --repo RJ2320/easycrawl --title "EasyCrawl $GITHUB_REF_NAME" --notes-file notes.md

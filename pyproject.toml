@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crawl"
+version = "0.3.4"
+description = "Turn a credits sheet into a finished end-crawl movie"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "Pillow>=10",
+    "numpy>=1.24",
+    "openpyxl>=3.1",
+    "fonttools>=4.40",
+    "certifi",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6>=6.6"]
+dev = ["pytest"]
+
+[project.scripts]
+crawl = "crawl.cli:main"
+crawl-ui = "crawl.ui.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["crawl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# A test stuck on a modal dialog dumps its stack instead of hanging silently.
+faulthandler_timeout = 120
+
+[tool.setuptools.package-data]
+"crawl.ui" = ["assets/*.png", "assets/*.ico"]
