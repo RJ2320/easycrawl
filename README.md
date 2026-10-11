@@ -386,7 +386,7 @@ data problems, used by the tests. `examples/sample.look.json` and
 - Live Google Sheets reads (export the `Crawl` tab for now).
 - HDR/PQ output with a chosen title white level (render `luma16` panels with `--fusion` and grade for now).
 
-License: undecided — Apache 2.0 unless we borrow from Cinecred (GPLv3).
+EasyCrawl source is licensed under [Apache 2.0](LICENSE). Bundled third-party components retain their own licenses.
 
 
 ### Logos workspace
