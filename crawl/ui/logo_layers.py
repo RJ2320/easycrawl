@@ -12,6 +12,10 @@ def key(item, scale):
 
 def prepare(item, scale):
     try:
+        # Unassigned logo slots are valid while credits are being assembled.
+        # Pillow treats None as a file object and raises AttributeError on .read().
+        if not item.path:
+            raise FileNotFoundError('No artwork assigned to this logo slot')
         with Image.open(item.path) as source:
             image = source.convert('RGBA')
         if item.crop:

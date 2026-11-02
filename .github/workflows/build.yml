@@ -41,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14          # Apple silicon
+          - os: macos-15          # Apple silicon
             name: mac
           - os: windows-latest
             name: windows
@@ -126,6 +126,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'NOTES'
+          Changes are listed in the [changelog](https://github.com/RJ2320/easycrawl/blob/main/CHANGELOG.md).
+
           **Mac:** download `EasyCrawl-*-mac.dmg`, open it, and drag `EasyCrawl.app` onto Applications.
           The app is not
           notarized with Apple, so the first time macOS will say it can't verify the developer: right-click

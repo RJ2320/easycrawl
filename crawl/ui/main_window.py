@@ -986,7 +986,7 @@ class MainWindow(QMainWindow):
         self._act(v, "Previous Section", "Ctrl+Up", lambda: self.preview.slider.jump(-1))
         self._act(v, "Next Section", "Ctrl+Down", lambda: self.preview.slider.jump(1))
         v.addSeparator()
-        for action in (self.preview.safe, self.preview.centre, self.preview.cuts):
+        for action in self.preview.guide_actions:
             v.addAction(action)
 
         v.addSeparator()

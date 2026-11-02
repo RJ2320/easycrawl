@@ -218,6 +218,13 @@ def pil_to_qimage(img: Image.Image) -> QImage:
     return QImage(data, img.width, img.height, img.width * 3, QImage.Format_RGB888).copy()
 
 
+def framing_guide_rect(frame: QRectF, ratio: float) -> QRectF:
+    """Largest centered rectangle of the requested aspect ratio inside the frame."""
+    width = min(frame.width(), frame.height() * ratio)
+    height = width / ratio
+    return QRectF(frame.center().x() - width / 2, frame.center().y() - height / 2, width, height)
+
+
 class _FrameViewMixin:
     """Shows the delivery frame at a given frame number, scaled to fit.
 
@@ -255,6 +262,8 @@ class _FrameViewMixin:
         self.height_px = 2160
         self.panels: List[Tuple[int, int]] = []
         self.show_cuts = False
+        self.show_title_safe = False
+        self.ratio_guides = []
         self.show_safe = False           # 90% action-safe box
         self.show_centre = False         # the column centre line
         self.centre_x = 1920
@@ -497,15 +506,6 @@ class _FrameViewMixin:
                     else:
                         yy = oy + (content_top + at) * k
                         p.drawLine(QPointF(ox, yy), QPointF(ox + w, yy))
-            overlay = QPen(theme.color("#ffffff", 46), 1)
-            if self.show_safe:
-                p.setPen(overlay)
-                p.setBrush(Qt.NoBrush)
-                p.drawRect(QRectF(ox + w * 0.05, oy + h * 0.05, w * 0.9, h * 0.9))
-            if self.show_centre:
-                p.setPen(overlay)
-                x = ox + self.centre_x * k
-                p.drawLine(QPointF(x, oy), QPointF(x, oy + h))
             p.restore()
             if self.show_cuts:
                 p.setPen(QPen(theme.color(theme.WARNING, 170), 1, Qt.DashLine))
@@ -514,6 +514,7 @@ class _FrameViewMixin:
                     if 0 <= y < self.height_px:
                         yy = oy + int(y * h / self.height_px)
                         p.drawLine(ox, yy, ox + w, yy)
+        self._paint_reference_guides(p, QRectF(target))
         p.setPen(QPen(QColor(theme.BORDER)))
         p.setBrush(Qt.NoBrush)
         p.drawRect(target.adjusted(0, 0, -1, -1))
@@ -523,6 +524,28 @@ class _FrameViewMixin:
         if self.busy and self.strip is not None:
             self._paint_pill(p, target, "Updating…")
         p.end()
+
+    def _paint_reference_guides(self, painter, frame):
+        painter.save()
+        painter.setClipRect(frame)
+        painter.setBrush(Qt.NoBrush)
+        for enabled, inset, opacity in ((self.show_safe, 0.05, 95), (self.show_title_safe, 0.10, 130)):
+            if enabled:
+                painter.setPen(QPen(theme.color("#ffffff", opacity), 1, Qt.DashLine))
+                painter.drawRect(frame.adjusted(frame.width()*inset, frame.height()*inset,
+                                               -frame.width()*inset, -frame.height()*inset))
+        if self.show_centre:
+            painter.setPen(QPen(theme.color("#ffffff", 95), 1))
+            x = frame.x() + self.centre_x / self.width_px * frame.width()
+            painter.drawLine(QPointF(x, frame.top()), QPointF(x, frame.bottom()))
+        font = painter.font(); font.setPixelSize(11); painter.setFont(font)
+        colors = {2.39: theme.ACCENT, 1.85: "#e8ba70", 2.00: "#88d0b5"}
+        for ratio in self.ratio_guides:
+            guide = framing_guide_rect(frame, ratio)
+            painter.setPen(QPen(theme.color(colors[ratio], 180), 1, Qt.DashLine))
+            painter.drawRect(guide.adjusted(0.5, 0.5, -0.5, -0.5))
+            painter.drawText(guide.adjusted(8, 3, -8, -3), Qt.AlignLeft | Qt.AlignTop, f"{ratio:.2f}:1")
+        painter.restore()
 
     def _draw_strip(self, painter, destination, viewport):
         painter.drawImage(destination, self.strip, QRectF(self.strip.rect()))
@@ -894,9 +917,13 @@ class PreviewPanel(QWidget):
         self.guides.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(self.guides)
         self.safe = QAction("Action-safe (90%)", self, checkable=True)
+        self.title_safe = QAction("Title-safe (80%)", self, checkable=True)
+        self.aspect_guides = {ratio: QAction(f"{ratio:.2f}:1 framing", self, checkable=True)
+                              for ratio in (2.39, 1.85, 2.00)}
         self.centre = QAction("Column centre line", self, checkable=True)
         self.cuts = QAction("Panel cuts", self, checkable=True)
-        for action in (self.safe, self.centre, self.cuts):
+        self.guide_actions = (self.safe, self.title_safe, self.centre, self.cuts, *self.aspect_guides.values())
+        for action in self.guide_actions:
             menu.addAction(action)
             action.toggled.connect(self._overlays_changed)
         self.guides.setMenu(menu)
@@ -994,6 +1021,8 @@ class PreviewPanel(QWidget):
 
     def _overlays_changed(self, *_):
         self.view.show_safe = self.safe.isChecked()
+        self.view.show_title_safe = self.title_safe.isChecked()
+        self.view.ratio_guides = [ratio for ratio, action in self.aspect_guides.items() if action.isChecked()]
         self.view.show_centre = self.centre.isChecked()
         self.view.show_cuts = self.cuts.isChecked()
         self.view.update()

@@ -101,6 +101,10 @@ class ImportDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setDefaultSectionSize(150)
         self.table.verticalHeader().setDefaultSectionSize(22)
+        self.preview_toggle = QPushButton("Show all rows")
+        self.preview_toggle.setCheckable(True)
+        self.preview_toggle.setToolTip("Browse the full worksheet; this does not change which rows are imported.")
+        self.preview_toggle.toggled.connect(lambda *_: self._refresh())
         self.summary = QLabel()
         self.summary.setProperty("role", "caption")
         self.summary.setWordWrap(True)
@@ -123,6 +127,7 @@ class ImportDialog(QDialog):
         right = QVBoxLayout()
         right.setSpacing(6)
         right.addWidget(self.table, 1)
+        right.addWidget(self.preview_toggle, 0, Qt.AlignLeft)
         right.addWidget(self.summary)
         body.addLayout(right, 1)
 
@@ -220,7 +225,10 @@ class ImportDialog(QDialog):
 
         width = max(max((len(r) for r in grid), default=0), 4)
         width = min(width, ingest.MAX_COLS)
-        shown = grid[:PREVIEW_ROWS]
+        shown = grid if self.preview_toggle.isChecked() else grid[:PREVIEW_ROWS]
+        self.preview_toggle.setVisible(len(grid) > PREVIEW_ROWS)
+        self.preview_toggle.setText(f"Show first {PREVIEW_ROWS} rows" if self.preview_toggle.isChecked()
+                                    else f"Show all {len(grid)} rows")
         self.table.clear()
         self.table.setColumnCount(width)
         self.table.setRowCount(len(shown))
@@ -247,6 +255,7 @@ class ImportDialog(QDialog):
             return
         rows, notes = ingest.normalize_grid(grid, spec, self.start_spin.value())
         found = ingest.parse(rows).describe()
-        more = f" · {len(grid) - len(shown)} more rows not shown" if len(grid) > len(shown) else ""
+        more = (f" · Preview: {len(shown)} of {len(grid)} rows; import includes the full selected worksheet"
+                if len(grid) > PREVIEW_ROWS else "")
         warnings = f" · {len(notes)} row{'s' if len(notes) != 1 else ''} will be flagged" if notes else ""
         self.summary.setText(f"Reads as {found}{warnings}{more}")
