@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7
+
+- Preserve Google Sheets links when reopening saved projects and enable Watch/Refresh controls immediately.
+- Stop watching the previous Google Sheet when starting a blank project.
+- Ignore background-check results from a different Google Sheet after switching sources.
+
 ## 0.3.6
 
 - Fixed preview failure after importing credits with unassigned logo artwork.

@@ -222,3 +222,44 @@ def test_window_settles_import_without_asking_when_obvious(app, tmp_path):
     win._sync_google()
     assert not win.refresh_action.isEnabled() and not win._watch_timer.isActive()
     win.close()
+
+
+@pytest.mark.parametrize('saved_rows',[None,[['','CAST',''],['Lead','','Example Name']]])
+def test_reopened_google_project_retains_link_and_enables_watch(app,tmp_path,monkeypatch,saved_rows):
+    from PySide6.QtCore import QSettings
+    from crawl.ui.main_window import MainWindow
+    settings=QSettings(str(tmp_path/'settings.ini'),QSettings.IniFormat)
+    monkeypatch.setattr(MainWindow,'_settings',lambda self: settings)
+    source=_workbook(tmp_path/'download.xlsx',{'Crawl':CREDITS})
+    project=Project(source=source,source_url=gsheets.canonical(LINK),sheet='Crawl',rows=saved_rows)
+    path=tmp_path/'example.crawl.json';project.save(str(path))
+    window=MainWindow()
+    assert not window.watch_action.isEnabled()
+    window.open_project(str(path))
+    assert window.project.source_url==gsheets.canonical(LINK)
+    assert window.refresh_action.isEnabled() and window.watch_action.isEnabled()
+    assert window._watch_timer.isActive()
+    window.new_blank()
+    assert not window.project.source_url
+    assert not window.watch_action.isEnabled()
+    assert not window._watch_timer.isActive()
+    window._unsaved=False;window.close()
+
+
+def test_old_google_check_is_ignored_after_switching_sources(app,tmp_path,monkeypatch):
+    from PySide6.QtCore import QSettings
+    from crawl.ui.main_window import MainWindow
+    from crawl.ui.worker import SheetFetchWorker
+    settings=QSettings(str(tmp_path/'settings.ini'),QSettings.IniFormat)
+    monkeypatch.setattr(MainWindow,'_settings',lambda self: settings)
+    monkeypatch.setattr(SheetFetchWorker,'start',lambda self: None)
+    window=MainWindow()
+    window.project.source_url=gsheets.canonical(LINK)
+    calls=[]
+    monkeypatch.setattr(window,'update_from_sheet',lambda *a,**k:calls.append(a))
+    window._fetch_google(manual=True)
+    worker=window._fetch_worker
+    window.project.source_url=''
+    worker.changed.emit('old-download.xlsx')
+    assert calls==[]
+    window.close()

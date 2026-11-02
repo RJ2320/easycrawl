@@ -1209,6 +1209,8 @@ class MainWindow(QMainWindow):
 
     def new_blank(self):
         """Start typing with no source file."""
+        self.project.source_url = ""
+        self._pending_url = ""
         self.project.rows = [["", "", ""] for _ in range(40)]
         self.project.arrangements[:] = []
         self.project.overrides[:] = []
@@ -1235,7 +1237,8 @@ class MainWindow(QMainWindow):
             return False
         self.project.source = str(Path(path).resolve()) if path else ""
         if fresh:
-            self.project.source_url = self._pending_url
+            if not preserve_edits or self._pending_url:
+                self.project.source_url = self._pending_url
             self._pending_url = ""
         if not preserve_edits:
             self.project.rows = None
@@ -1263,6 +1266,7 @@ class MainWindow(QMainWindow):
                            f"row{'s' if len(notes) != 1 else ''} adjusted on import — see the warnings in Credits")
                 self._sticky_message = message      # survive the "laid out" message that follows
             self.statusBar().showMessage(message)
+        self._sync_google()
         self.schedule_rebuild()
         return True
 
@@ -1482,9 +1486,9 @@ class MainWindow(QMainWindow):
         if manual:
             self.statusBar().showMessage("Checking the Google Sheet…")
         worker = SheetFetchWorker(self.project, self._sheet_folder(), self)
-        worker.changed.connect(lambda path: self._fetch_changed(path) if self._fetch_worker is worker else None)
-        worker.unchanged.connect(lambda path: self._fetch_unchanged(path) if self._fetch_worker is worker else None)
-        worker.failed.connect(lambda message: self._fetch_failed(message) if self._fetch_worker is worker else None)
+        worker.changed.connect(lambda path: self._fetch_changed(path) if self._fetch_worker is worker and self.project.source_url == worker.project.source_url else None)
+        worker.unchanged.connect(lambda path: self._fetch_unchanged(path) if self._fetch_worker is worker and self.project.source_url == worker.project.source_url else None)
+        worker.failed.connect(lambda message: self._fetch_failed(message) if self._fetch_worker is worker and self.project.source_url == worker.project.source_url else None)
         self._fetch_worker = worker
         worker.start()
 
