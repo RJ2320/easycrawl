@@ -95,7 +95,7 @@ Export, with the preview on the right and the **Export** button always in the he
   **Logos…** inserts artwork as a new row, side by side; select an existing logo row first to
   append to it. You can also drop image files on the window. Logos are measured by their artwork,
   not their file — transparent or black margins are trimmed — so resolution and canvas size don't
-  affect how big a logo appears. **Look → Geometry → Logo height → even out** sets how different
+  affect how big a logo appears. **Look → Show advanced settings → Balance different logo shapes** sets how different
   shapes are sized against each other: 0 % gives every logo the same height (wide wordmarks
   dominate), 100 % the same area. A row wider than 80 % of the frame shrinks to fit.
 
@@ -134,6 +134,20 @@ Export, with the preview on the right and the **Export** button always in the he
 
   The settings are saved in the project and used again for revisions. On the command line they
   are `--sheet`, `--columns B,C,D-F` and `--start-row`.
+
+- **Explicit sections** — select rows in Credits and choose **Music…** to define song
+  blocks without relying on quotation marks. Song boundaries can be split, merged or
+  edited by row number. Choose stacked or 2–6-column layouts, alignment and spacing;
+  **Music typography…** opens the shared song/label/name style controls under Look.
+  **Return to automatic** removes the manual music markings without changing text.
+
+  Under **Layout**, **Legal text** explicitly treats the selected text as legal copy,
+  even when it is short or has no copyright marker. **Special thanks…** gives each
+  selected thanks section an optional first-row heading, its own 1–6 name columns and
+  **Overall section width** (% of frame). New layouts default to a compact 55% width;
+  the reset arrow restores 55%. Saved shared widths remain unchanged until adjusted.
+  Mark multiple thanks sections separately to give them different layouts. Markings
+  save with the project, support undo, and shift when rows are inserted or deleted.
 
 - **Google Sheets** — **File → Open Google Sheet…** (Ctrl+Shift+G), or drop or paste the link
   on the window. The sheet must be shared as *Anyone with the link* (Viewer is enough): the app
@@ -220,11 +234,19 @@ Export, with the preview on the right and the **Export** button always in the he
   picks an integer px/frame and scales the flexible spacing (leading, gaps) so the crawl lands on
   the frame exactly. *Manual speed*: set px/frame and spacing yourself; runtime is whatever results.
   Head/tail holds add black frames either side.
-- **Look** — font family/style (from installed fonts, or a file), size, leading, tracking and
-  uppercase per element (header, song title, role, name, list, legal), plus the two-column
-  geometry, gaps, list columns, logo size. (Resolution is on the Export tab.) Every change re-lays-out and updates the preview.
-- **Look → Music** — adjust the title gap, song-group gap, label/name gap and line width.
-  Separate title, label and name styles include italic toggles; the name style’s leading controls line spacing.
+- **Look** — choose font family/style, font size and line spacing for section headings,
+  credit roles, credit names, thanks/partner names and legal text. Heading gaps and name-column
+  spacing sit beside their related text controls. **Ignore blank rows below section headings**
+  is on by default: headings use **Space below heading** without extra blank-row gaps, while
+  the source spreadsheet remains unchanged. Turn it off to retain blank-row spacing. **Show advanced settings** reveals letter
+  spacing, uppercase/italic, widths, positioning, logo defaults and supersampling. Existing
+  advanced values remain active while hidden. Each Look and Music control has a reset-arrow button
+  to restore only that setting to its built-in default, scaled to the output resolution. Styles apply across the project; mark sections
+  in Credits for their individual column layouts. Every change updates the preview.
+- **Look → Music** — choose title, label and name fonts, sizes and line spacing, plus the
+  gaps below titles, between songs and between labels/names. **Show advanced settings**
+  reveals letter spacing, uppercase/italic and maximum line width. Explicit Music sections
+  keep the spacing overrides chosen in their own Music… dialog.
   For selected words, edit the cell in Credits, select them and press Ctrl+I (stored as `*italic text*`).
   Italics use an installed italic face; a missing italic face produces an actionable preview error.
 - **Click a credit in the preview** to pause and select its source cell in Credits, without

@@ -308,15 +308,22 @@ def _xlsx_rows(ws) -> List[List[str]]:
 #   roles    each row is a role in the left column, names to come
 #   list     set in list columns even if the run is short
 #   center   one centred line per row
-LAYOUT_KINDS = ("roles", "list", "center")
+LAYOUT_KINDS = ("roles", "list", "center", "legal", "thanks")
 
 
 def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_before=(),
-          kinds: Optional[dict] = None) -> Crawl:
+          kinds: Optional[dict] = None, music_blocks=(), thanks_sections=(), ignore_blank_after_header=False) -> Crawl:
     # Also normalize embedded project rows and edits, not only file imports.
     # Keep row positions so lint continues to reference the original sheet.
     rows = [tuple(_cell(value) for value in row) for row in rows]
     kinds = kinds or {}
+    explicit_music = {row: block for block in music_blocks
+                      for row in range(block['start'], block['end'] + 1)}
+    explicit_thanks = {row: section for section in thanks_sections
+                       for row in range(section['start'], section['end'] + 1)}
+    music_starts = {block['start'] for block in music_blocks}
+    break_before = (set(break_before) | music_starts | {block['end'] + 1 for block in music_blocks}
+                    | {s['start'] for s in thanks_sections} | {s['end']+1 for s in thanks_sections})
     crawl = Crawl(source=source)
     group = Group()
 
@@ -337,7 +344,45 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
         rownum = i + 1
 
         if not (b or c or d):
+            # Keep source row numbers and text intact; only suppress a group
+            # break directly after a section heading. Song spacing is separate.
+            if (ignore_blank_after_header and group.blocks
+                    and isinstance(group.blocks[-1], Header) and group.blocks[-1].level == 1):
+                i += 1
+                continue
             flush()
+            i += 1
+            continue
+
+        if i > 0 and i - 1 in explicit_music and i not in explicit_music:
+            in_music, in_song = False, False
+        if kinds.get(i) == 'legal':
+            group.blocks.append(Legal(text="\n".join(value for value in (b, c, d) if value), row=rownum))
+            i += 1
+            continue
+        if i in explicit_thanks:
+            section = explicit_thanks[i]
+            if i == section['start'] and section.get('title', True):
+                group.blocks.append(Header(text=" ".join(v for v in (b,c,d) if v), level=1, row=rownum))
+                i += 1
+                continue
+            names=[]
+            while i <= section['end'] and i < n and any(rows[i]) and kinds.get(i) != 'legal':
+                names.append("\n".join(value for value in rows[i] if value))
+                i += 1
+            group.blocks.append(ListBlock(names=names, columns=section.get('columns',3), row=rownum,
+                                          width_percent=section.get('width_percent')))
+            continue
+        if i in explicit_music:
+            block = explicit_music[i]
+            if i == block['start'] and block.get('title', True):
+                group.blocks.append(Header(text=" ".join(value for value in (b, c, d) if value), level=2, row=rownum))
+            else:
+                role = b
+                names = "\n".join(value for value in (c, d) if value)
+                if b and not names and b.lower() not in {'written by', 'performed by', 'produced by', 'courtesy of', 'published by'}:
+                    role, names = '', b
+                group.blocks.append(RolePair(role=role, names=_split_names(names), row=rownum, music=True))
             i += 1
             continue
 

@@ -34,6 +34,7 @@ class ListBlock:
     names: List[str]
     columns: int = 3
     row: int = 0
+    width_percent: Optional[float] = None  # None follows the shared Look width
 
 
 @dataclass

@@ -26,7 +26,7 @@ from .snapshot_dialog import SnapshotDialog
 from .sheet_editor import SheetEditor
 from .music_panel import MusicPanel
 from .logo_workspace import LogoWorkspace
-from .widgets import LOGO_DEFAULTS, PreviewPanel, StyleEditor, _dspin, _spin, panel_expand_icon
+from .widgets import LOGO_DEFAULTS, PreviewPanel, StyleEditor, _dspin, _spin, panel_expand_icon, resettable, default_look
 from .worker import RebuildWorker, RenderWorker, SheetFetchWorker, UpdateCheckWorker
 
 FPS_CHOICES = [23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0]
@@ -202,6 +202,8 @@ class LookPanel(QWidget):
         self.group_gap = _spin(0, 1000, " px")
         self.header_before = _spin(0, 1000, " px")
         self.header_after = _spin(0, 1000, " px")
+        self.ignore_blank_after_header = QCheckBox("Ignore blank rows below section headings")
+        self.ignore_blank_after_header.setToolTip("Use Space below heading consistently, even when the sheet has blank rows directly below a section heading. Source rows stay unchanged. Song titles keep their own spacing.")
         self.list_width = _spin(200, 8192, " px")
         self.list_gap = _spin(0, 1000, " px")
         self.list_columns = _spin(1, 6, "")
@@ -215,47 +217,86 @@ class LookPanel(QWidget):
                                      "100 %: all the same area (wide logos shorter, compact ones taller).")
         self.supersample = _spin(1, 4, " ×")
 
-        geo = QGroupBox("Geometry")
-        g = QFormLayout(geo)
-        g.addRow("Column centre", self.center_x)
-        g.addRow("Gutter", self.gutter)
-        g.addRow("Group gap", self.group_gap)
-        hg = QHBoxLayout()
-        hg.addWidget(self.header_before)
-        hg.addWidget(QLabel("after"))
-        hg.addWidget(self.header_after)
-        g.addRow("Header gap before", hg)
-        lw = QHBoxLayout()
-        lw.addWidget(self.list_width)
-        lw.addWidget(QLabel("gap"))
-        lw.addWidget(self.list_gap)
-        lw.addWidget(QLabel("cols"))
-        lw.addWidget(self.list_columns)
-        g.addRow("List width", lw)
-        g.addRow("Legal width", self.legal_width)
-        lg = QHBoxLayout()
-        lg.addWidget(self.logo_height)
-        lg.addWidget(QLabel("gap"))
-        lg.addWidget(self.logo_gap)
-        lg.addWidget(QLabel("even out"))
-        lg.addWidget(self.logo_balance)
-        g.addRow("Logo height", lg)
-        g.addRow("Supersample", self.supersample)
-
         self.editors = {
-            "header": StyleEditor("Section header", look.header),
-            "role": StyleEditor("Role (left column)", look.role),
-            "name": StyleEditor("Name (right column)", look.name),
-            "list": StyleEditor("List (thanks, partners)", look.list),
-            "legal": StyleEditor("Legal", look.legal),
+            "header": StyleEditor("Section headings", look.header),
+            "role": StyleEditor("Credit roles / job titles", look.role),
+            "name": StyleEditor("Credit names", look.name),
+            "list": StyleEditor("Thanks / partner names", look.list),
+            "legal": StyleEditor("Legal text", look.legal),
         }
+
+        for key, editor in self.editors.items():
+            editor.defaults = lambda key=key: getattr(default_look(self.project), key)
+        reset_keys = {
+            self.header_before: 'header_gap_before', self.header_after: 'header_gap_after',
+            self.ignore_blank_after_header: 'ignore_blank_after_header', self.gutter: 'gutter',
+            self.list_gap: 'list_column_gap', self.group_gap: 'group_gap', self.center_x: 'center_x',
+            self.list_width: 'list_width', self.legal_width: 'legal_width', self.logo_height: 'logo_height',
+            self.logo_gap: 'logo_gap', self.logo_balance: 'logo_balance', self.supersample: 'supersample',
+        }
+        def with_reset(control, label):
+            def value():
+                if control is self.list_columns:
+                    return 3
+                result = getattr(default_look(self.project), reset_keys[control])
+                return round(result * 100) if control is self.logo_balance else result
+            return resettable(control, value, label or 'ignore blank rows below headings')
+
+        def add_controls(group, entries):
+            form = QFormLayout()
+            for label, control in entries:
+                form.addRow(label, with_reset(control, label))
+            group.layout().addLayout(form)
+
+        add_controls(self.editors['header'], [
+            ("Space above heading", self.header_before),
+            ("Space below heading", self.header_after),
+            ("", self.ignore_blank_after_header),
+        ])
+        add_controls(self.editors['name'], [("Space between role and name columns", self.gutter)])
+        add_controls(self.editors['list'], [("Space between name columns", self.list_gap)])
+        self.header_before.setToolTip("Extra space above each section heading, in addition to any blank-row spacing.")
+        self.header_after.setToolTip("Space between a section heading and the credits beneath it.")
+        self.list_gap.setToolTip("Horizontal space between columns in thanks and partner lists.")
+
+        spacing = QGroupBox("Between sections")
+        form = QFormLayout(spacing)
+        form.addRow("Space for a blank spreadsheet row", with_reset(self.group_gap, "blank-row spacing"))
+        self.group_gap.setToolTip("Each blank source row adds this much vertical space. Fit runtime may scale it.")
+
+        self.advanced_toggle = QCheckBox("Show advanced settings")
+        self.advanced_geometry = QGroupBox("Advanced layout and rendering")
+        g = QFormLayout(self.advanced_geometry)
+        for label, control in [
+            ("Credit column centre position", self.center_x),
+            ("Total width of thanks / partner lists", self.list_width),
+            ("Default automatic list columns", self.list_columns),
+            ("Legal text wrap width", self.legal_width),
+            ("Default logo height", self.logo_height),
+            ("Space around logos", self.logo_gap),
+            ("Balance different logo shapes", self.logo_balance),
+            ("Render supersampling", self.supersample),
+        ]:
+            g.addRow(label, with_reset(control, label))
+        self.list_columns.setToolTip("Used for automatically detected lists. Explicit Special thanks sections keep their own column count.")
+        self.advanced_geometry.hide()
+        self.advanced_toggle.toggled.connect(self.advanced_geometry.setVisible)
+        for editor in self.editors.values():
+            self.advanced_toggle.toggled.connect(editor.advanced.setVisible)
 
         inner = QWidget()
         il = QVBoxLayout(inner)
+        note = QLabel("Choose a font, size and spacing for each text type. These styles apply across the project. "
+                      "Mark individual sections in Credits to choose their column layouts. "
+                      "Spacing is measured in output pixels; Fit runtime may scale vertical spacing.")
+        note.setWordWrap(True)
+        il.addWidget(note)
+        il.addWidget(self.advanced_toggle)
         for ed in self.editors.values():
             il.addWidget(ed)
             ed.changed.connect(self.changed)
-        il.addWidget(geo)
+        il.addWidget(spacing)
+        il.addWidget(self.advanced_geometry)
         il.addStretch(1)
         il.setContentsMargins(14, 4, 14, 14)
         scroll = QScrollArea()
@@ -267,6 +308,7 @@ class LookPanel(QWidget):
         lay.addWidget(scroll)
 
         self.load()
+        self.ignore_blank_after_header.toggled.connect(self._apply)
         for w in self._geo_widgets():
             w.valueChanged.connect(self._apply)
 
@@ -285,6 +327,9 @@ class LookPanel(QWidget):
         self.group_gap.setValue(look.group_gap)
         self.header_before.setValue(look.header_gap_before)
         self.header_after.setValue(look.header_gap_after)
+        self.ignore_blank_after_header.blockSignals(True)
+        self.ignore_blank_after_header.setChecked(look.ignore_blank_after_header)
+        self.ignore_blank_after_header.blockSignals(False)
         self.list_width.setValue(look.list_width)
         self.list_gap.setValue(look.list_column_gap)
         self.list_columns.setValue(self.project.list_columns)
@@ -305,6 +350,7 @@ class LookPanel(QWidget):
         look.group_gap = self.group_gap.value()
         look.header_gap_before = self.header_before.value()
         look.header_gap_after = self.header_after.value()
+        look.ignore_blank_after_header = self.ignore_blank_after_header.isChecked()
         look.list_width = self.list_width.value()
         look.list_column_gap = self.list_gap.value()
         self.project.list_columns = self.list_columns.value()
@@ -625,6 +671,7 @@ class MainWindow(QMainWindow):
         self.sheet_editor.changed.connect(self._credits_changed)
         self.sheet_editor.finding_selected.connect(self.jump_to_finding)
         self.sheet_editor.import_history_requested.connect(self.show_import_history)
+        self.sheet_editor.music_style_requested.connect(self._show_music_style)
         self.sheet_editor.preview_requested.connect(self.seek_row)
         self.preview.view.credit_selected.connect(self._select_preview_credit)
         self.sheet_editor.restored.connect(self._history_restored)
@@ -1214,6 +1261,7 @@ class MainWindow(QMainWindow):
         self.project.rows = [["", "", ""] for _ in range(40)]
         self.project.arrangements[:] = []
         self.project.overrides[:] = []
+        self.project.music_blocks[:] = []
         self.project.import_notes[:] = []
         self.project.base_rows = None
         self.load_sheet("", preserve_edits=True)
@@ -1244,6 +1292,7 @@ class MainWindow(QMainWindow):
             self.project.rows = None
             self.project.arrangements[:] = []
             self.project.overrides[:] = []
+            self.project.music_blocks[:] = []
         if fresh:
             # What the client sent, kept so a revised sheet can be merged in later.
             self.project.base_rows = [list(r) for r in rows]
@@ -1804,6 +1853,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(first)
 
     # ---- logos -------------------------------------------------------------
+
+    def _show_music_style(self):
+        self._restore_panel_layout()
+        self.tabs.setCurrentWidget(self.look_tabs)
+        self.look_tabs.setCurrentWidget(self.music_panel)
 
     def _workspace_changed(self, *_):
         active = self.tabs.currentWidget() is self.logo_workspace

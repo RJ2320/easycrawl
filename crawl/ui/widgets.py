@@ -12,11 +12,11 @@ from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPain
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame,
                                QGroupBox, QHBoxLayout, QLabel, QMenu, QPushButton, QSlider, QSpinBox,
-                               QToolButton, QToolTip, QVBoxLayout, QWidget)
+                               QToolButton, QToolTip, QVBoxLayout, QWidget, QStyle)
 
 from .. import fonts
 from . import theme
-from ..look import TextStyle
+from ..look import Look, TextStyle
 
 
 # --------------------------------------------------------------------------- #
@@ -119,12 +119,38 @@ class FontPicker(QWidget):
 # Text style editor
 # --------------------------------------------------------------------------- #
 
+def default_look(project):
+    """Built-in defaults scaled to the current delivery resolution."""
+    look = Look()
+    look.resize(project.look.width, project.look.height)
+    return look
+
+
+def resettable(control, default, label, setter=None):
+    """Wrap a control with an individual reset action; defaults stay dynamic."""
+    wrapper = QWidget()
+    row = QHBoxLayout(wrapper)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(4)
+    row.addWidget(control, 1)
+    button = QToolButton()
+    button.setIcon(button.style().standardIcon(QStyle.SP_BrowserReload))
+    button.setAccessibleName(f"Reset {label} to default")
+    button.setToolTip(f"Reset {label} to the built-in default for this output resolution")
+    button.clicked.connect(lambda: (setter or (control.setChecked if isinstance(control, QCheckBox)
+                                               else control.setValue))(default()))
+    control.reset_button = button
+    row.addWidget(button)
+    return wrapper
+
+
 class StyleEditor(QGroupBox):
     changed = Signal()
 
-    def __init__(self, title: str, style: TextStyle, parent=None):
+    def __init__(self, title: str, style: TextStyle, parent=None, defaults=None):
         super().__init__(title, parent)
         self.style = style
+        self.defaults = defaults or TextStyle
         self.font = FontPicker()
         self.size = _spin(8, 400, " px")
         self.leading = _spin(0, 600, " px")
@@ -132,29 +158,28 @@ class StyleEditor(QGroupBox):
         self.upper = QCheckBox("Uppercase")
         self.italic = QCheckBox("Italic")
 
-        # One line of metrics and flags under the font, sized to fit a narrow panel.
-        for widget, width in ((self.size, 80), (self.leading, 80), (self.tracking, 94)):
-            widget.setFixedWidth(width)
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 6, 0, 2)
         column.setSpacing(6)
-        column.addWidget(self.font)
-        row = QHBoxLayout()
-        row.setSpacing(6)
-        for caption, widget in (("Size", self.size), ("Leading", self.leading), ("Track", self.tracking)):
-            label = QLabel(caption)
-            label.setProperty("role", "caption")
-            row.addWidget(label)
-            row.addWidget(widget)
-            row.addSpacing(4)
-        row.addStretch(1)
-        column.addLayout(row)
+        column.addWidget(resettable(self.font, lambda: self.defaults().font, "font", self._reset_font))
+        metrics = QFormLayout()
+        metrics.addRow("Font size", resettable(self.size, lambda: self.defaults().size, "font size"))
+        metrics.addRow("Line spacing", resettable(self.leading, lambda: self.defaults().leading, "line spacing"))
+        self.leading.setToolTip("Distance between text baselines, in output pixels.\n"
+                                "Larger values spread lines apart; this is not extra padding.\n"
+                                "Fit runtime may scale vertical spacing.")
+        column.addLayout(metrics)
+        self.advanced = QWidget()
+        advanced_layout = QFormLayout(self.advanced)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.addRow("Letter spacing", resettable(self.tracking, lambda: self.defaults().tracking, "letter spacing"))
         flags = QHBoxLayout()
-        flags.setSpacing(14)
-        flags.addWidget(self.upper)
-        flags.addWidget(self.italic)
+        flags.addWidget(resettable(self.upper, lambda: self.defaults().uppercase, "uppercase"))
+        flags.addWidget(resettable(self.italic, lambda: self.defaults().italic, "italic"))
         flags.addStretch(1)
-        column.addLayout(flags)
+        advanced_layout.addRow(flags)
+        column.addWidget(self.advanced)
+        self.advanced.hide()
 
         self.load(style)
         self.font.changed.connect(self._apply)
@@ -163,6 +188,11 @@ class StyleEditor(QGroupBox):
         self.tracking.valueChanged.connect(self._apply)
         self.upper.toggled.connect(self._apply)
         self.italic.toggled.connect(self._apply)
+
+    def _reset_font(self, value):
+        self.style.font = value
+        self.font.set_value(value)
+        self.changed.emit()
 
     def load(self, style: TextStyle):
         self.style = style

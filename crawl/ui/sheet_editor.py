@@ -10,23 +10,25 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-                               QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
-                               QStackedLayout, QTableWidgetItem, QTableWidgetSelectionRange, QToolButton,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+                               QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
+                               QStackedLayout, QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QToolButton,
                                QVBoxLayout, QWidget)
 
 from .. import arrangements, ingest
 from .arrangement_table import ArrangementTable
-from .widgets import _spin, panel_expand_icon
+from .widgets import _spin, panel_expand_icon, resettable
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
     'roles': 'Roles — left column, names to come',
     'list': 'List in columns',
     'center': 'Centred lines',
+    'legal': 'Legal text',
+    'thanks': 'Special thanks',
 }
 LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles (names to come)', 'list': 'List in columns',
-                'center': 'Centred lines'}
+                'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…'}
 UNDO_LIMIT = 200
 
 
@@ -43,6 +45,7 @@ def _tool(text, tip='', menu=None):
 
 
 class SheetEditor(QWidget):
+    music_style_requested = Signal()
     import_history_requested = Signal()
     changed = Signal()
     finding_selected = Signal(int, str)
@@ -106,6 +109,9 @@ class SheetEditor(QWidget):
         actions.setSpacing(4)
         actions.addWidget(_tool('Rows', 'Insert or delete rows', insert_menu))
         actions.addWidget(logos_button)
+        self.music_button = _tool('Music…', 'Mark song blocks and arrange music credits')
+        self.music_button.clicked.connect(self.music_dialog)
+        actions.addWidget(self.music_button)
         actions.addWidget(_tool('Layout', 'How rows with only column B filled are set', layout_menu))
         actions.addWidget(self.arrange_button)
         actions.addStretch(1)
@@ -296,13 +302,13 @@ class SheetEditor(QWidget):
 
     def _ranges(self):
         """Every list of {start, end} row ranges that must follow inserted and deleted rows."""
-        return (self.project.arrangements, self.project.overrides, self.project.import_notes,
+        return (self.project.arrangements, self.project.overrides, self.project.import_notes, self.project.music_blocks,
                 self.table.change_marks)
 
     def _state(self):
         p = self.project
         return json.dumps([self.rows(), p.arrangements, p.overrides, p.logos, p.logo_settings,
-                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks])
+                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks])
 
     def commit_undo(self):
         """Record a step if anything undoable changed since the last one."""
@@ -333,11 +339,12 @@ class SheetEditor(QWidget):
             self._restore(self._redo.pop())
 
     def _restore(self, state):
-        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks = json.loads(state)
+        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks = json.loads(state)
         current = (self.table.currentRow(), self.table.currentColumn())
         p = self.project
         p.arrangements[:] = arrangements_
         p.overrides[:] = overrides
+        p.music_blocks[:] = music_blocks
         p.dismissed[:] = dismissed
         p.import_notes[:] = notes
         p.base_rows = base_rows
@@ -612,6 +619,7 @@ class SheetEditor(QWidget):
         else:
             menu.addAction('Arrange side by side…', lambda: self.arrange_dialog())
         menu.addAction('Add logos…', self.add_logos)
+        menu.addAction('Music…', self.music_dialog)
         menu.addSeparator()
         menu.addAction(self.show_in_preview)
         menu.exec(global_pos)
@@ -621,6 +629,8 @@ class SheetEditor(QWidget):
         current = self.table.arrangement_at(row)
         if current:
             tips.append(f"{current.get('label', 'Side by side')} · {current['columns']} columns")
+        if any(block['start'] <= row <= block['end'] for block in self.project.music_blocks):
+            tips.append('Music song block — use Music… to edit its layout')
         override = self.override_at(row)
         if override:
             tips.append(f"Layout: {LAYOUT_LABELS[override['kind']]}")
@@ -636,12 +646,15 @@ class SheetEditor(QWidget):
         return next((o for o in self.project.overrides if o['start'] <= row <= o['end']), None)
 
     def _apply_layout_to_selection(self, kind):
+        if kind == 'thanks':
+            self.thanks_dialog()
+            return
         try:
             self.apply_layout(self._selected_rows(), kind)
         except ValueError as error:
             QMessageBox.information(self, 'Cannot set layout', str(error))
 
-    def apply_layout(self, selected_rows, kind):
+    def apply_layout(self, selected_rows, kind, **options):
         """Mark rows as roles / list / center, or 'auto' to clear. Existing
         overrides are cut around the selection; adjacent same-kind runs merge."""
         selected = sorted(set(selected_rows))
@@ -650,7 +663,17 @@ class SheetEditor(QWidget):
         if kind not in ('auto',) + ingest.LAYOUT_KINDS:
             raise ValueError(f'Unknown layout {kind!r}.')
         rows = self.rows()
-        if kind != 'auto' and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
+        if kind == 'thanks':
+            columns = options.get('columns', 3)
+            if not 1 <= columns <= 6:
+                raise ValueError('Choose 1–6 name columns.')
+            width = options.get('width_percent')
+            if width is not None and not 1 <= width <= 100:
+                raise ValueError('Choose a section width between 1% and 100% of the frame.')
+            pixels = self.project.look.list_width if width is None else self.project.look.width * width / 100
+            if pixels <= (columns - 1) * self.project.look.list_column_gap:
+                raise ValueError('The columns have no room for text. Increase the section width or reduce the column gap.')
+        if kind not in ('auto', 'legal', 'thanks') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
                                       for r in selected if r < len(rows)):
             raise ValueError('Layout overrides apply to rows with only column B filled '
                              '(roles or names with nothing in C or D).')
@@ -661,22 +684,22 @@ class SheetEditor(QWidget):
             for r in range(item['start'], item['end'] + 1):
                 if r in chosen:
                     if run:
-                        pieces.append(dict(start=run[0], end=run[-1], kind=item['kind']))
+                        pieces.append(dict(item, start=run[0], end=run[-1], **({'title': False} if item['kind']=='thanks' and run[0]!=item['start'] else {})))
                         run = []
                 else:
                     run.append(r)
             if run:
-                pieces.append(dict(start=run[0], end=run[-1], kind=item['kind']))
+                pieces.append(dict(item, start=run[0], end=run[-1], **({'title': False} if item['kind']=='thanks' and run[0]!=item['start'] else {})))
         if kind != 'auto':
             start = selected[0]
             for a, b in zip(selected, selected[1:] + [None]):
                 if b != a + 1:
-                    pieces.append(dict(start=start, end=a, kind=kind))
+                    pieces.append(dict(start=start, end=a, kind=kind, **options))
                     start = b
         pieces.sort(key=lambda o: o['start'])
         merged = []
         for piece in pieces:
-            if merged and merged[-1]['kind'] == piece['kind'] and merged[-1]['end'] + 1 >= piece['start']:
+            if merged and piece['kind'] != 'thanks' and merged[-1]['kind'] == piece['kind'] and merged[-1]['end'] + 1 >= piece['start']:
                 merged[-1]['end'] = max(merged[-1]['end'], piece['end'])
             else:
                 merged.append(piece)
@@ -785,6 +808,190 @@ class SheetEditor(QWidget):
             self.project.arrangements.remove(current)
             self._changed()
 
+    def thanks_dialog(self):
+        selected=self._selected_rows()
+        row=self.table.currentRow()
+        current=self.override_at(row if row>=0 else (selected[0] if selected else -1))
+        current=current if current and current['kind']=='thanks' else None
+        if current and len(selected)<=1:
+            selected=list(range(current['start'],current['end']+1))
+        if not selected or selected!=list(range(selected[0],selected[-1]+1)):
+            QMessageBox.information(self,'Select a thanks section','Select one continuous range containing the heading and names, or just the names.')
+            return
+        dialog=QDialog(self);dialog.setWindowTitle('Special thanks section')
+        layout=QVBoxLayout(dialog)
+        note=QLabel(f'Rows {selected[0]+1}–{selected[-1]+1}. This section has its own heading, columns and width.\n'
+                    'Each populated row remains one entry; its text is not changed.')
+        note.setWordWrap(True);layout.addWidget(note)
+        title=QCheckBox('First selected row is the section heading');title.setChecked(current.get('title',True) if current else True)
+        columns=_spin(1,6,'');columns.setValue(current.get('columns',3) if current else 3)
+        width=_spin(1,100,' % of frame')
+        inherited=round(100*self.project.look.list_width/self.project.look.width)
+        width.setValue(current.get('width_percent',inherited) if current else 55)
+        width.setToolTip('Total width occupied by this thanks section. Smaller values bring the columns closer together. Long names wrap to fit.')
+        form=QFormLayout();form.addRow('',title);form.addRow('Name columns',columns)
+        form.addRow('Overall section width',resettable(width,lambda:55,'thanks section width'))
+        layout.addLayout(form)
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        def accept():
+            try:
+                self.apply_layout(selected,'thanks',title=title.isChecked(),columns=columns.value(),width_percent=width.value())
+            except ValueError as error:
+                QMessageBox.information(dialog,'Cannot set thanks layout',str(error))
+                return
+            dialog.accept()
+        buttons.accepted.connect(accept);buttons.rejected.connect(dialog.reject)
+        if current:
+            remove=buttons.addButton('Return to automatic',QDialogButtonBox.DestructiveRole)
+            remove.clicked.connect(lambda:(self.apply_layout(selected,'auto'),dialog.accept()))
+        layout.addWidget(buttons);dialog.exec()
+
+    # ---- explicit music sections -------------------------------------------
+
+    def apply_music_blocks(self, blocks, columns=1, gap=120, alignment='center',
+                           song_gap=96, title_gap=12, inline_gap=16):
+        from ..music import without_rows
+        rows=self.rows()
+        blocks=sorted((dict(block) for block in blocks),key=lambda b:b['start'])
+        if not blocks:
+            raise ValueError('Define at least one song block.')
+        if not 1<=columns<=6 or alignment not in ('center','left') or min(gap,song_gap,title_gap,inline_gap)<0:
+            raise ValueError('Choose 1–6 columns and non-negative spacing.')
+        for index,block in enumerate(blocks):
+            if not 0<=block['start']<=block['end']<len(rows):
+                raise ValueError('Each song needs valid first and last rows.')
+            if index and blocks[index-1]['end']>=block['start']:
+                raise ValueError('Song blocks cannot overlap.')
+            if not any(rows[block['start']]) or not any(rows[block['end']]):
+                raise ValueError('Start and end each song on a row containing text.')
+            if any(ingest.logo_labels(rows[r][0] or rows[r][1]) for r in range(block['start'],block['end']+1)):
+                raise ValueError('Keep logo rows outside the music section.')
+        start,end=blocks[0]['start'],blocks[-1]['end']
+        for old in self.project.music_blocks:
+            if not (end<old['start'] or start>old['end']) and not (start<=old['start'] and old['end']<=end):
+                raise ValueError('Include the complete existing song when changing its boundaries.')
+        for item in self.project.arrangements:
+            if not (end<item['start'] or start>item['end']):
+                if not (item.get('music') and start<=item['start'] and item['end']<=end):
+                    raise ValueError('This range overlaps an existing layout. Select the complete music section or remove that layout first.')
+        width=min(self.project.look.width*.9,2*min(self.project.look.center_x,self.project.look.width-self.project.look.center_x))
+        if (width-(columns-1)*gap)/columns<200:
+            raise ValueError('The song columns are too narrow. Choose fewer columns or a smaller gap.')
+        # Unassigned gaps between song blocks must not introduce unrelated text.
+        covered={r for block in blocks for r in range(block['start'],block['end']+1)}
+        if any(any(rows[r]) for r in range(start,end+1) if r not in covered):
+            raise ValueError('Each populated row inside this section must belong to a song block.')
+        self.project.music_blocks[:]=[b for b in self.project.music_blocks if b['end']<start or b['start']>end]+blocks
+        self.project.music_blocks.sort(key=lambda b:b['start'])
+        self.project.overrides[:]=without_rows(self.project.overrides,covered)
+        self.project.arrangements[:]=[a for a in self.project.arrangements if a['end']<start or a['start']>end]
+        self.project.arrangements.append(dict(start=start,end=end,columns=columns,gap=gap,alignment=alignment,
+                                             label='Music',music=True,song_gap=song_gap,title_gap=title_gap,inline_gap=inline_gap))
+        self.project.arrangements.sort(key=lambda a:a['start'])
+        self._changed()
+        self.refresh_arrangements()
+
+    def remove_music(self, selected):
+        selected=set(selected)
+        self.project.music_blocks[:]=[b for b in self.project.music_blocks
+                                     if not selected.intersection(range(b['start'],b['end']+1))]
+        self.project.arrangements[:]=[a for a in self.project.arrangements
+                                     if not (a.get('music') and selected.intersection(range(a['start'],a['end']+1)))]
+        self._changed()
+        self.refresh_arrangements()
+
+    def music_dialog(self):
+        from ..music import blocks_from_selection
+        selected=self._selected_rows()
+        current=self.current_arrangement()
+        current=current if current and current.get('music') else None
+        if current and selected and (len(selected)<=1 or all(current['start']<=r<=current['end'] for r in selected)):
+            selected=list(range(current['start'],current['end']+1))
+        elif current:
+            current=None
+        try:
+            proposed=([dict(b) for b in self.project.music_blocks
+                       if b['start']>=selected[0] and b['end']<=selected[-1]] if current else
+                      blocks_from_selection(self.rows(),selected))
+        except (ValueError,IndexError) as error:
+            QMessageBox.information(self,'Select music credits',str(error) or 'Select music rows first.')
+            return
+        dialog=QDialog(self);dialog.setWindowTitle('Music blocks');dialog.resize(780,620)
+        layout=QVBoxLayout(dialog)
+        hint=QLabel('Each row below defines one song block. Edit its first/last sheet rows and whether its first row is the title.\n'
+                    'Credit text stays in its original cells. Typography is shared under Look → Music.')
+        hint.setWordWrap(True);layout.addWidget(hint)
+        table=QTableWidget(0,4);table.setHorizontalHeaderLabels(['Song / first line','First row','Last row','First row is title'])
+        table.horizontalHeader().setSectionResizeMode(0,QHeaderView.Stretch)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        def populate(blocks):
+            table.setRowCount(0)
+            for block in blocks:
+                row=table.rowCount();table.insertRow(row)
+                text=' / '.join(v for v in self.rows()[block['start']] if v)
+                label=QTableWidgetItem(text);label.setFlags(label.flags() & ~Qt.ItemIsEditable);table.setItem(row,0,label)
+                for column,key in ((1,'start'),(2,'end')):
+                    control=_spin(1,self.table.rowCount(),'');control.setValue(block[key]+1);table.setCellWidget(row,column,control)
+                title=QTableWidgetItem('Song title');title.setFlags((title.flags() | Qt.ItemIsUserCheckable) & ~Qt.ItemIsEditable)
+                title.setCheckState(Qt.Checked if block.get('title',True) else Qt.Unchecked);table.setItem(row,3,title)
+        def definitions():
+            return [dict(start=table.cellWidget(r,1).value()-1,end=table.cellWidget(r,2).value()-1,
+                         title=table.item(r,3).checkState()==Qt.Checked) for r in range(table.rowCount())]
+        populate(proposed);layout.addWidget(table,1)
+        tools=QHBoxLayout()
+        def split_song():
+            blocks=definitions();row=table.currentRow()
+            if not 0<=row<len(blocks) or blocks[row]['start']>=blocks[row]['end']:
+                return
+            block=blocks[row]
+            position,ok=QInputDialog.getInt(dialog,'Split song block','First sheet row of the next song:',
+                                          block['start']+2,block['start']+2,block['end']+1)
+            if ok:
+                old_end=block['end'];block['end']=position-2
+                blocks.insert(row+1,dict(start=position-1,end=old_end,title=True));populate(blocks)
+        def merge_song():
+            blocks=definitions();row=table.currentRow()
+            if 0<=row<len(blocks)-1:
+                blocks[row]['end']=blocks[row+1]['end'];blocks.pop(row+1);populate(blocks)
+        for label,callback in (('Split at blank rows',lambda:populate(blocks_from_selection(self.rows(),selected))),
+                               ('Use one song',lambda:populate(blocks_from_selection(self.rows(),selected,split=False))),
+                               ('Split selected song…',split_song),
+                               ('Merge with next song',merge_song)):
+            button=QPushButton(label);button.clicked.connect(callback);tools.addWidget(button)
+        layout.addLayout(tools)
+        form=QFormLayout()
+        columns=QComboBox();columns.addItem('Stacked',1)
+        for count in range(2,7):
+            columns.addItem(f'Side by side — {count} columns',count)
+        columns.setCurrentIndex(current['columns']-1 if current else 0)
+        gap=_spin(0,1000,' px');gap.setValue(current.get('gap',120) if current else 120)
+        alignment=QComboBox();alignment.addItem('Centered','center');alignment.addItem('Left aligned','left')
+        alignment.setCurrentIndex(1 if current and current['alignment']=='left' else 0)
+        spacing=[]
+        for key,label,default in (('song_gap','Between song groups',self.project.look.music_group_gap),
+                                  ('title_gap','Below song titles',self.project.look.music_title_gap),
+                                  ('inline_gap','Between label and name',self.project.look.music_inline_gap)):
+            control=_spin(0,1000,' px');control.setValue(current.get(key,default) if current else default)
+            spacing.append(control);form.addRow(label,control)
+        form.insertRow(0,'Song layout',columns)
+        form.insertRow(1,'Column gap',gap);form.insertRow(2,'Title / credit alignment',alignment);layout.addLayout(form)
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        style=buttons.addButton('Music typography…',QDialogButtonBox.ActionRole)
+        if current:
+            remove=buttons.addButton('Return to automatic',QDialogButtonBox.DestructiveRole)
+            remove.clicked.connect(lambda:(self.remove_music(selected),dialog.accept()))
+        def accept(open_style=False):
+            try:
+                self.apply_music_blocks(definitions(),columns.currentData(),gap.value(),alignment.currentData(),
+                                        *(control.value() for control in spacing))
+            except ValueError as error:
+                QMessageBox.information(dialog,'Cannot apply music layout',str(error));return
+            dialog.accept()
+            if open_style:self.music_style_requested.emit()
+        buttons.accepted.connect(lambda:accept());buttons.rejected.connect(dialog.reject)
+        style.clicked.connect(lambda:accept(True));layout.addWidget(buttons);dialog.exec()
+
     # ---- findings -----------------------------------------------------------------
 
     def clear_errors(self, message='Checking…'):
@@ -877,7 +1084,7 @@ class SheetEditor(QWidget):
         from .. import changes
         rows, shifts, marks = changes.apply(self.rows(), accepted)
         self.table.change_marks[:] = []
-        for ranges in (self.project.arrangements, self.project.overrides, self.project.import_notes):
+        for ranges in (self.project.arrangements, self.project.overrides, self.project.import_notes, self.project.music_blocks):
             changes.replay(ranges, shifts)
         # What each marked row used to say, for its tooltip.
         ordered = sorted(accepted, key=lambda c: (c.start, c.end))

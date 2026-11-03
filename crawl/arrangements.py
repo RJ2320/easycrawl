@@ -38,6 +38,8 @@ def delete_rows(arrangements, deleted):
         survivors = [i for i in range(item['start'], item['end'] + 1) if i not in deleted]
         if not survivors:
             continue
+        if item.get('title', False) and item['start'] in deleted:
+            item['title'] = False
         item['start'] = survivors[0] - sum(i < survivors[0] for i in deleted)
         item['end'] = survivors[-1] - sum(i < survivors[-1] for i in deleted)
         kept.append(item)

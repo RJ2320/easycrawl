@@ -80,6 +80,7 @@ class Project:
     # Layout overrides for Col-B-only rows: {start, end, kind} with zero-based
     # inclusive rows and kind in ingest.LAYOUT_KINDS (roles | list | center).
     overrides: List[dict] = field(default_factory=list)
+    music_blocks: List[dict] = field(default_factory=list)  # explicit song ranges; text stays in its source cells
 
     # Findings the user has looked at and accepted, by lint.Finding.key.
     dismissed: List[str] = field(default_factory=list)
@@ -98,7 +99,7 @@ class Project:
 
     _SIMPLE = ("source", "source_url", "sheet", "columns", "start_row", "list_columns", "max_panel",
                "output_dir", "basename", "timestamp_output", "version_output", "codec", "alpha", "write_fusion", "write_report", "fmt", "logos", "logo_settings", "rows", "arrangements",
-               "overrides", "dismissed", "import_notes", "base_rows", "snapshots", "import_history")
+               "overrides", "music_blocks", "dismissed", "import_notes", "base_rows", "snapshots", "import_history")
 
     def record_import(self, rows, action="Imported", applied=0, skipped=0, deduplicate=False):
         """Keep source provenance; opening a saved project is not a new import."""
@@ -127,6 +128,9 @@ class Project:
                 cfg["dy"] = int(round(cfg.get("dy", 0) * factor))
             for item in self.arrangements:
                 item["gap"] = int(round(item.get("gap", 120) * factor))
+                for key in ("song_gap", "title_gap", "inline_gap"):
+                    if key in item:
+                        item[key] = int(round(item[key] * factor))
             self.timing.speed = max(1, int(round(self.timing.speed * factor)))
         return factor
 
@@ -307,7 +311,9 @@ def crawl_from_rows(project: Project, rows) -> Crawl:
     kinds = {row: item["kind"] for item in project.overrides
              for row in range(item["start"], item["end"] + 1) if item["kind"] in ingest.LAYOUT_KINDS}
     crawl = ingest.parse(rows, source=project.source, list_columns=project.list_columns,
-                         break_before=boundaries, kinds=kinds)
+                         break_before=boundaries, kinds=kinds, music_blocks=project.music_blocks,
+                         ignore_blank_after_header=project.look.ignore_blank_after_header,
+                         thanks_sections=[item for item in project.overrides if item["kind"]=="thanks"])
     crawl.arrangements = copy.deepcopy(project.arrangements)
     for lg in crawl.logos():
         if lg.label in project.logos:

@@ -1,7 +1,7 @@
 """Music-specific typography and spacing controls."""
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLabel, QScrollArea
-from .widgets import StyleEditor, _spin
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLabel, QScrollArea, QCheckBox
+from .widgets import StyleEditor, _spin, resettable, default_look
 
 
 class MusicPanel(QWidget):
@@ -13,12 +13,17 @@ class MusicPanel(QWidget):
         inner = QWidget()
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(14, 10, 14, 14)
-        note = QLabel('Music credits use compact, centered label-and-name lines.\n'
+        note = QLabel('Choose the fonts, sizes and spacing used across music credits.\n'
                       'To italicise words, edit the cell in Credits, select them and press Ctrl+I.\n'
                       'Fit runtime also scales vertical spacing to meet the chosen duration.')
         note.setWordWrap(True)
         layout.addWidget(note)
+        self.advanced_toggle = QCheckBox('Show advanced settings')
+        layout.addWidget(self.advanced_toggle)
         form = QFormLayout()
+        self.advanced_geometry = QWidget()
+        advanced_form = QFormLayout(self.advanced_geometry)
+        advanced_form.setContentsMargins(0, 0, 0, 0)
         self.controls = {}
         for key, label, lo, hi in [
             ('music_title_gap', 'Gap below song title', 0, 600),
@@ -28,16 +33,21 @@ class MusicPanel(QWidget):
         ]:
             control = _spin(lo, hi, ' px')
             self.controls[key] = control
-            form.addRow(label, control)
+            (advanced_form if key == 'music_width' else form).addRow(label, resettable(control, lambda key=key: getattr(default_look(self.project), key), label))
             control.valueChanged.connect(self._apply)
         layout.addLayout(form)
         self.editors = {}
         for key, label in [('song', 'Song title'), ('music_role', 'Labels — Written by, Performed by…'),
-                           ('music_name', 'Names — leading sets line spacing')]:
+                           ('music_name', 'Music credit names')]:
             editor = StyleEditor(label, getattr(project.look, key))
+            editor.defaults = lambda key=key: getattr(default_look(self.project), key)
             self.editors[key] = editor
             layout.addWidget(editor)
             editor.changed.connect(self.changed)
+            self.advanced_toggle.toggled.connect(editor.advanced.setVisible)
+        layout.addWidget(self.advanced_geometry)
+        self.advanced_geometry.hide()
+        self.advanced_toggle.toggled.connect(self.advanced_geometry.setVisible)
         layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

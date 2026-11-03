@@ -69,6 +69,8 @@ class ArrangementDelegate(QStyledItemDelegate):
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
         text = index.data() or ""
+        if text and self.table().marked_heading_at(index.row()):
+            option.font.setWeight(QFont.DemiBold)
         if index.column() == 0 and self.table().centered_at(index.row()):
             option.displayAlignment = Qt.AlignCenter
             if text.isupper():
@@ -213,9 +215,14 @@ class ArrangementTable(QTableWidget):
 
     # ---- lookups the delegate paints from ----------------------------------
 
+    def marked_heading_at(self, row):
+        override = self.override_at(row)
+        return bool((override and override['kind']=='thanks' and override.get('title', True) and override['start']==row)
+                    or any(block['start']==row and block.get('title', True) for block in self.project.music_blocks))
+
     def centered_at(self, row):
         override = self.override_at(row)
-        if not override or override['kind'] != 'center':
+        if not self.marked_heading_at(row) and (not override or override['kind'] != 'center'):
             return False
         cells = [self.item(row, c).text() if self.item(row, c) else '' for c in range(3)]
         return bool(cells[0] and not cells[1] and not cells[2]

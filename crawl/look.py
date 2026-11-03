@@ -51,9 +51,10 @@ class Look:
     # Vertical spacing (flex = scaled by the timing solver)
     group_gap: int = 120         # blank sheet row (flex)
     header_gap_before: int = 40  # extra above a header, on top of group_gap (flex)
+    ignore_blank_after_header: bool = True  # use heading gap without extra blank-row spacing
     header_gap_after: int = 24   # between a header and what follows (flex)
     list_column_gap: int = 160   # horizontal, between list columns
-    list_width: int = 2880       # total width of the multi-column block
+    list_width: int = 2112       # total width of the multi-column block
     legal_width: int = 2400      # wrap width for legal paragraphs
     logo_height: int = 300       # placeholder / scaled logo height
     logo_gap: int = 80           # vertical space around a logo (flex)

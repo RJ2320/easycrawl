@@ -221,7 +221,7 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
     """Compose grid rows, retaining each grid row as a safe panel-break unit."""
     arrangements = sorted(crawl.arrangements, key=lambda a: a['start'])
     for index, item in enumerate(arrangements):
-        if item['start'] < 0 or item['end'] < item['start'] or not (1 if item.get('logo_grid') else 2) <= item['columns'] <= 6:
+        if item['start'] < 0 or item['end'] < item['start'] or not (1 if item.get('logo_grid') or item.get('music') else 2) <= item['columns'] <= 6:
             raise ValueError('Invalid side-by-side arrangement. Edit or remove it in Credits.')
         if index and arrangements[index - 1]['end'] >= item['start']:
             raise ValueError('Side-by-side arrangements cannot overlap.')
@@ -238,7 +238,8 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
     while index < len(crawl.groups):
         group = crawl.groups[index]
         item = next((a for a in arrangements if a['start'] <= group.first_row - 1 <= a['end']), None)
-        gap = look.music_group_gap if any(isinstance(b, RolePair) and b.music for b in group.blocks) else look.group_gap
+        gap = (item.get('song_gap', look.music_group_gap) if item and item.get('music') else
+               look.music_group_gap if any(isinstance(b, RolePair) and b.music for b in group.blocks) else look.group_gap)
         if result.groups:
             pen += gap * flex
         if item is None:
@@ -271,6 +272,9 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
         local_look.width = width
         local_look.center_x = width / 2
         local_look.music_width = local_look.legal_width = local_look.list_width = width
+        if item.get('music'):
+            local_look.music_title_gap = item.get('title_gap', look.music_title_gap)
+            local_look.music_inline_gap = item.get('inline_gap', look.music_inline_gap)
         grid_group_start = len(result.groups)
         grid_top = round(pen)
         for start in range(0, len(selected), columns):
@@ -305,14 +309,28 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put) -> 
     cols = max(1, b.columns)
     n = len(b.names)
     rows = math.ceil(n / cols)
-    col_w = (look.list_width - (cols - 1) * look.list_column_gap) / cols
-    left = look.center_x - look.list_width / 2
+    block_width = look.list_width if b.width_percent is None else look.width * b.width_percent / 100
+    if b.width_percent is not None and not 1 <= b.width_percent <= 100:
+        raise ValueError('Thanks section width must be between 1% and 100% of the frame.')
+    col_w = (block_width - (cols - 1) * look.list_column_gap) / cols
+    left = look.center_x - block_width / 2
+    if col_w <= 0:
+        raise ValueError('Thanks / partner columns have no room for text. Reduce the column gap or use fewer columns.')
     lead = look.list.leading * flex
-    for c in range(cols):
-        cx = int(round(left + c * (col_w + look.list_column_gap) + col_w / 2))
-        for r, name in enumerate(b.names[c * rows:(c + 1) * rows]):
-            put(name, "list", cx, "ms", pen + r * lead, b.row + c * rows + r)
-    return pen + rows * lead
+    # Entries fill down each column. A wrapped entry reserves the same row
+    # height in every column so the next names remain aligned and clear.
+    columns = [[text.wrap(look.list, name, col_w) for name in b.names[c * rows:(c + 1) * rows]]
+               for c in range(cols)]
+    for r in range(rows):
+        line_count = max((len(column[r]) for column in columns if r < len(column)), default=1)
+        for c, column in enumerate(columns):
+            if r >= len(column):
+                continue
+            cx = int(round(left + c * (col_w + look.list_column_gap) + col_w / 2))
+            for offset, line in enumerate(column[r]):
+                put(line, "list", cx, "ms", pen + offset * lead, b.row + c * rows + r)
+        pen += line_count * lead
+    return pen
 
 
 # --------------------------------------------------------------------------- #

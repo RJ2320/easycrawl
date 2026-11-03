@@ -416,12 +416,12 @@ def test_resize_scales_the_look_by_height_and_keeps_the_column_placed():
     assert look.resize(1920, 1080) == 0.5
     assert (look.width, look.height, look.center_x) == (1920, 1080, 910)     # 50 px left of centre
     assert (look.name.size, look.name.leading, look.header.tracking) == (28, 40, 2.0)
-    assert (look.gutter, look.group_gap, look.logo_height, look.list_width) == (60, 60, 150, 1440)
+    assert (look.gutter, look.group_gap, look.logo_height, look.list_width) == (60, 60, 150, 1056)
     assert look.logo_balance == 0.85 and look.supersample == 1               # not lengths: untouched
     # Same height, wider frame: nothing scales, the column moves with the centre.
     look = Look()
     assert look.resize(4096, 2160) == 1.0
-    assert (look.center_x, look.name.size, look.list_width) == (2048, 56, 2880)
+    assert (look.center_x, look.name.size, look.list_width) == (2048, 56, 2112)
     # Canvas only: sizes stay, the column is re-centred.
     look = Look()
     assert look.resize(1920, 1080, scale_look=False) == 1.0

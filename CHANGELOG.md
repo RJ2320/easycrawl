@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.8
+
+- Mark music song blocks, legal text and multiple independent Special thanks sections explicitly.
+- Choose stacked or multi-column music layouts with individual song boundaries and spacing.
+- Simplify Look controls with descriptive labels, Advanced settings and individual reset buttons.
+- Use consistent spacing below section headings by optionally ignoring following blank rows.
+- Wrap long and multiline thanks entries without overlapping subsequent rows.
+- Bring thanks columns closer with a 55% default width and adjustable per-section widths.
+- Preserve section settings through saving, undo and row insertions/deletions.
+
 ## 0.3.7
 
 - Preserve Google Sheets links when reopening saved projects and enable Watch/Refresh controls immediately.
