@@ -487,3 +487,9 @@ icon. **Layout** includes Music, Logo block and Logo library. **Rows → Review 
 export** holds preview-following, dismissed-warning, change-mark and CSV controls.
 Side by side arranges whole credit groups next to each other; section layouts set
 the type and name columns within a section.
+
+Drag entries up or down in the Logos list to reorder the credit grid, or use
+**Move earlier / Move later**. Multiple selected logos move together in their
+existing order. Reordering updates the list immediately, saves with the project
+and supports undo; the first move creates a logo grid if needed. Canvas dragging
+continues to adjust position rather than list order.

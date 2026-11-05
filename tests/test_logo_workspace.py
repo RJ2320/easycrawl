@@ -261,3 +261,76 @@ def test_replace_placeholder_artwork_is_undoable(tmp_path,monkeypatch):
     workspace.replace_button.click();assert p.logos['Placeholder']==str(path)
     e.undo();assert 'Placeholder' not in p.logos and e.rows()[0][0]=='[Logo: Placeholder]'
     workspace.close();e.close()
+
+
+def reorder_workspace():
+    from crawl.ui.sheet_editor import SheetEditor
+    from crawl.ui.logo_workspace import LogoWorkspace
+    p=Project();e=SheetEditor(p)
+    e.load([['[Logo: A] | [Logo: B] | [Logo: C]','','']])
+    w=LogoWorkspace(p,e);w.refresh()
+    return p,e,w
+
+
+def logo_list(workspace):
+    return [workspace.artwork.item(i).text() for i in range(workspace.artwork.count())]
+
+
+def test_move_buttons_update_immediately_keep_selection_and_repeat():
+    p,e,w=reorder_workspace()
+    w.artwork.setCurrentRow(2)
+    w.move_buttons[-1].click()
+    assert logo_list(w)==['A','C','B']
+    assert w.artwork.currentItem().text()=='C'
+    w.move_buttons[-1].click()
+    assert logo_list(w)==['C','A','B']
+    assert w.artwork.currentItem().text()=='C' and not w.move_buttons[-1].isEnabled()
+    w.refresh()
+    assert w.artwork.currentItem().text()=='C'
+    w.move_buttons[1].click();assert logo_list(w)==['A','C','B']
+    assert p.arrangements[0]['logo_order']==['A','C','B']
+    w.close();e.close()
+
+
+def test_first_reorder_and_auto_grid_are_one_undo_step():
+    p,e,w=reorder_workspace()
+    w.artwork.setCurrentRow(1);w.reorder(-1)
+    assert p.arrangements[0]['logo_grid'] and logo_list(w)==['B','A','C']
+    e.undo();w.refresh()
+    assert not p.arrangements and logo_list(w)==['A','B','C']
+    e.redo();w.refresh();assert logo_list(w)==['B','A','C']
+    w.close();e.close()
+
+
+def test_drag_drop_order_uses_same_persistent_layout_and_survives_save(tmp_path):
+    from PySide6.QtCore import QModelIndex
+    from PySide6.QtWidgets import QAbstractItemView
+    p,e,w=reorder_workspace()
+    assert w.artwork.dragDropMode()==QAbstractItemView.InternalMove
+    w.artwork.setCurrentRow(2)
+    assert w.artwork.model().moveRows(QModelIndex(),2,1,QModelIndex(),0)
+    w.artwork.order_dropped.emit()
+    assert logo_list(w)==['C','A','B']
+    assert [item.label for item in layout(load_crawl(p),p.look).logos]==['C','A','B']
+    path=tmp_path/'ordered.crawl.json';p.save(str(path))
+    assert Project.load(str(path)).arrangements[0]['logo_order']==['C','A','B']
+    e.undo();w.refresh();assert logo_list(w)==['A','B','C']
+    w.close();e.close()
+
+
+def test_move_multiple_selected_logos_keeps_their_relative_order():
+    p,e,w=reorder_workspace()
+    w.artwork.item(1).setSelected(True);w.artwork.item(2).setSelected(True)
+    w.reorder(-1)
+    assert logo_list(w)==['B','C','A']
+    assert {item.text() for item in w.artwork.selectedItems()}=={'B','C'}
+    w.reorder(1);assert logo_list(w)==['A','B','C']
+    w.close();e.close()
+
+
+def test_move_without_selection_or_past_boundary_does_not_create_grid():
+    p,e,w=reorder_workspace()
+    w.reorder(1);assert not p.arrangements
+    w.artwork.setCurrentRow(0);w.reorder(-1)
+    assert not p.arrangements and logo_list(w)==['A','B','C']
+    w.close();e.close()

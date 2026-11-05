@@ -1,12 +1,31 @@
 """Dedicated logo layout surface, linked to logo sections in the credits sheet."""
 from dataclasses import replace
+from collections import Counter
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QItemSelectionModel
 from .logo_canvas import LogoCanvas
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
                               QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView)
 from .. import ingest
 from .widgets import LogoBar, _spin
+
+
+class LogoOrderList(QListWidget):
+    order_dropped = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setDragDropOverwriteMode(False)
+        self.setDropIndicatorShown(True)
+
+    def dropEvent(self, event):
+        before = [self.item(i).text() for i in range(self.count())]
+        super().dropEvent(event)
+        after = [self.item(i).text() for i in range(self.count())]
+        if before != after:
+            self.order_dropped.emit()
 
 
 class LogoWorkspace(QWidget):
@@ -26,7 +45,8 @@ class LogoWorkspace(QWidget):
         self._bounds_section = None
         self._layer_cache = {}
         self.section = QComboBox()
-        self.artwork = QListWidget()
+        self.artwork = LogoOrderList()
+        self.artwork.setToolTip("Drag logos up or down to change their order in the credits.")
         self.artwork.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.color_mode = QComboBox()
         self.color_mode.addItem("Original color", "original")
@@ -58,9 +78,12 @@ class LogoWorkspace(QWidget):
         show.setToolTip('Show this logo section in the Credits spreadsheet')
         show.clicked.connect(lambda: self.current() and self.show_row.emit(self.current()['start'] + 1))
         buttons = QHBoxLayout()
+        self.move_buttons = {}
         for label, direction in [('Move earlier', -1), ('Move later', 1)]:
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, d=direction: self.reorder(d))
+            button.setEnabled(False)
+            self.move_buttons[direction] = button
             buttons.addWidget(button)
         layout = QVBoxLayout(self)
         layout.addWidget(self.note)
@@ -102,6 +125,7 @@ class LogoWorkspace(QWidget):
         canvas_layout.addWidget(self.inspector)
         self.section.currentIndexChanged.connect(self._section_changed)
         self.artwork.itemSelectionChanged.connect(self._list_selection)
+        self.artwork.order_dropped.connect(self._order_dropped)
         self.view.selection_changed.connect(self._canvas_selection)
         self.view.group_moved.connect(self.move_selected)
         self.inspector.changed.connect(self.setting_changed)
@@ -154,7 +178,7 @@ class LogoWorkspace(QWidget):
         self.artwork.blockSignals(False)
         self.columns.setValue(cfg.get('columns', 3))
         self.gap.setValue(cfg.get('gap', 120))
-        self.note.setText('This layout appears at the listed rows in the credits. Apply logo grid to place one logo per cell.'
+        self.note.setText('Drag logos in the list to reorder them, or use Move earlier / Move later. Changes appear in the credits.'
                           if section else 'No logo section yet. Add artwork at the selected spreadsheet row.')
         self._draw()
         self.inspector.load('', {})
@@ -230,7 +254,7 @@ class LogoWorkspace(QWidget):
         self.view.set_logos(local)
         self.view.set_busy(False)
 
-    def apply_grid(self):
+    def apply_grid(self, checked=False, *, commit=True, order=None):
         section = self.current()
         if not section:
             return
@@ -249,26 +273,51 @@ class LogoWorkspace(QWidget):
             return
         cfg = dict(old or {}, start=section['start'], end=section['end'], columns=columns,
                    gap=gap, alignment='center', label='Logo layout', logo_grid=True)
+        if order is not None:
+            cfg['logo_order'] = list(order)
         if old is None:
             self.project.arrangements.append(cfg)
         else:
             old.update(cfg)
+        if commit:
+            self.editor._changed()
+        return old if old is not None else cfg
+
+    def _apply_order(self, labels):
+        section = self.current()
+        if not section or Counter(labels) != Counter(section['labels']):
+            self.refresh()
+            return
+        selected = {item.text() for item in self.artwork.selectedItems()}
+        cfg = self.arrangement()
+        if cfg and cfg.get('logo_grid'):
+            if cfg.get('logo_order') == labels:
+                return
+            cfg['logo_order'] = list(labels)
+        elif self.apply_grid(commit=False, order=labels) is None:
+            self.refresh()
+            return
+        # Update the visible list now; the main window rebuilds the preview.
+        self._section_changed()
+        self._canvas_selection(selected)
         self.editor._changed()
 
+    def _order_dropped(self):
+        self._apply_order([self.artwork.item(i).text() for i in range(self.artwork.count())])
+
     def reorder(self, direction):
-        row = self.artwork.currentRow()
-        target = row + direction
-        if not 0 <= target < self.artwork.count():
-            return
-        if not self.arrangement() or not self.arrangement().get('logo_grid'):
-            self.apply_grid()
-        cfg = self.arrangement()
-        if not cfg or not cfg.get('logo_grid'):
+        selected = {item.text() for item in self.artwork.selectedItems()}
+        if not selected or direction not in (-1, 1):
             return
         labels = [self.artwork.item(i).text() for i in range(self.artwork.count())]
-        labels[row], labels[target] = labels[target], labels[row]
-        cfg['logo_order'] = labels
-        self.editor._changed()
+        original = list(labels)
+        indices = range(1,len(labels)) if direction == -1 else range(len(labels)-2,-1,-1)
+        for index in indices:
+            neighbor = index + direction
+            if labels[index] in selected and labels[neighbor] not in selected:
+                labels[index],labels[neighbor] = labels[neighbor],labels[index]
+        if labels != original:
+            self._apply_order(labels)
 
     def open_library(self):
         section = self.current()
@@ -312,14 +361,26 @@ class LogoWorkspace(QWidget):
         self.selection_count.setText(f'{len(labels)} selected')
         self.replace_button.setEnabled(len(labels) == 1)
         self.remove_button.setEnabled(bool(labels))
+        order = [self.artwork.item(i).text() for i in range(self.artwork.count())]
+        for direction,button in self.move_buttons.items():
+            button.setEnabled(any(label in labels and 0 <= i+direction < len(order)
+                                  and order[i+direction] not in labels for i,label in enumerate(order)))
         self.align_button.setEnabled(len(labels) >= 2)
         self.sync_selection(next(iter(labels)) if len(labels) == 1 else '')
 
     def _canvas_selection(self, labels):
+        current = self.artwork.currentItem()
+        current_label = current.text() if current else None
         self.artwork.blockSignals(True)
+        selected_items = []
         for index in range(self.artwork.count()):
             item = self.artwork.item(index)
             item.setSelected(item.text() in labels)
+            if item.text() in labels:
+                selected_items.append(item)
+        if selected_items:
+            active = next((item for item in selected_items if item.text()==current_label),selected_items[0])
+            self.artwork.setCurrentItem(active,QItemSelectionModel.NoUpdate)
         self.artwork.blockSignals(False)
         self._list_selection()
 

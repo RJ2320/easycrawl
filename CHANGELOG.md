@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.11
+
+- Fix Move earlier / Move later so logo order updates immediately and the selection survives refreshes.
+- Add drag-and-drop reordering in the Logos list, including multiple selected logos.
+- Save ordering with the project and support undo/redo; creating a grid and making the first move are one undo step.
+- Keep canvas dragging for manual positioning separate from list reordering.
+
 ## 0.3.10
 
 - Remove selected logos and placeholders from the Logos workspace, with undo and shared-logo protection.
