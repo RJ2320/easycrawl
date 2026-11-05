@@ -193,3 +193,71 @@ def test_greyscale_inspector_syncs_render_save_undo_and_reset(tmp_path):
     assert not bar.greyscale.isChecked()
     win._unsaved = False
     win.close()
+
+
+def test_remove_placeholder_slot_keeps_other_logos_and_supports_undo(tmp_path):
+    from crawl.ui.sheet_editor import SheetEditor
+    p=Project();e=SheetEditor(p)
+    e.load([['[Logo: Missing] | [Logo: Kept]','',''],['Next role','','Example Person']])
+    p.logo_settings['Missing']={'scale':1.2};e.commit_undo()
+    e.remove_logo_labels({'Missing'},0,0)
+    assert e.rows()[0][0]=='[Logo: Kept]' and len(e.rows())==2
+    assert [item.label for item in load_crawl(p).logos()]==['Kept']
+    assert 'Missing' not in p.logo_settings
+    e.undo();assert 'Missing' in e.rows()[0][0] and p.logo_settings['Missing']['scale']==1.2
+    e.redo();assert e.rows()[0][0]=='[Logo: Kept]'
+    e.close()
+
+
+def test_remove_last_logo_clears_slot_and_empty_grid_without_deleting_file(tmp_path):
+    from crawl.ui.sheet_editor import SheetEditor
+    path=tmp_path/'Artwork.png';Image.new('RGBA',(100,50),'white').save(path)
+    p=Project();e=SheetEditor(p);e.load([['[Logo: Artwork]','','']])
+    p.logos['Artwork']=str(path)
+    p.arrangements=[dict(start=0,end=0,columns=1,gap=120,logo_grid=True,logo_order=['Artwork'])]
+    e.commit_undo();e.remove_logo_labels({'Artwork'},0,0)
+    assert e.rows()==[['','','']] and not p.logos and not p.arrangements and path.exists()
+    e.undo();assert p.logos['Artwork']==str(path) and p.arrangements[0]['logo_order']==['Artwork']
+    e.close()
+
+
+def test_remove_is_scoped_to_current_section_and_keeps_shared_assignment(tmp_path):
+    from crawl.ui.sheet_editor import SheetEditor
+    p=Project();e=SheetEditor(p)
+    e.load([['[Logo: Shared]','',''],['','ANOTHER SECTION',''],['[Logo: Shared]','','']])
+    p.logos['Shared']='existing.png';p.logo_settings['Shared']={'scale':1.1};e.commit_undo()
+    e.remove_logo_labels({'Shared'},0,0)
+    assert not e.rows()[0][0] and e.rows()[2][0]=='[Logo: Shared]'
+    assert p.logos['Shared']=='existing.png' and p.logo_settings['Shared']['scale']==1.1
+    e.close()
+
+
+def test_remove_button_handles_selected_placeholder_and_refreshes_list():
+    from crawl.ui.sheet_editor import SheetEditor
+    from crawl.ui.logo_workspace import LogoWorkspace
+    from PySide6.QtWidgets import QPushButton
+    p=Project();e=SheetEditor(p);e.load([['[Logo: Placeholder]','','']])
+    workspace=LogoWorkspace(p,e);workspace.refresh()
+    assert not workspace.remove_button.isEnabled()
+    workspace.artwork.setCurrentRow(0)
+    assert workspace.remove_button.isEnabled() and workspace.replace_button.isEnabled()
+    workspace.remove_button.click()
+    assert e.rows()==[['','','']] and workspace.artwork.count()==0
+    assert not workspace.view.logos and not workspace.remove_button.isEnabled()
+    labels={button.text() for button in workspace.findChildren(QPushButton)}
+    assert {'Replace selected logo…','Add logo…','Remove logo','Logo library…','Show locations'}<=labels
+    e.undo();workspace.refresh();assert workspace.artwork.count()==1
+    workspace.close();e.close()
+
+
+def test_replace_placeholder_artwork_is_undoable(tmp_path,monkeypatch):
+    from crawl.ui.sheet_editor import SheetEditor
+    from crawl.ui.logo_workspace import LogoWorkspace
+    from PySide6.QtWidgets import QFileDialog
+    path=tmp_path/'Artwork.png';Image.new('RGBA',(100,50),'white').save(path)
+    p=Project();e=SheetEditor(p);e.load([['[Logo: Placeholder]','','']])
+    workspace=LogoWorkspace(p,e);workspace.refresh();workspace.artwork.setCurrentRow(0)
+    monkeypatch.setattr(QFileDialog,'getOpenFileName',lambda *args,**kwargs:(str(path),''))
+    workspace.replace_button.click();assert p.logos['Placeholder']==str(path)
+    e.undo();assert 'Placeholder' not in p.logos and e.rows()[0][0]=='[Logo: Placeholder]'
+    workspace.close();e.close()

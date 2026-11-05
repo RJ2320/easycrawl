@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.10
+
+- Remove selected logos and placeholders from the Logos workspace, with undo and shared-logo protection.
+- Keep artwork files when removing logo slots, clear empty logo grids and refresh stale canvas items.
+- Rename logo controls to Replace selected logo, Add logo, Remove logo, Logo library and Show locations.
+- Make replacement of placeholder artwork undoable.
+- Simplify the Credits toolbar to Rows, Layout, Side by side and the expand icon.
+- Move Music and Logo library into Layout; move review and export options into Rows.
+
 ## 0.3.9
 
 - Add a searchable logo library with verified official-source downloads, artwork variants and offline caching.

@@ -85,7 +85,10 @@ class SheetEditor(QWidget):
         layout_menu = QMenu(self)
         for kind, label in LAYOUT_SHORT.items():
             layout_menu.addAction(label, lambda k=kind: self._apply_layout_to_selection(k))
-        more_menu = QMenu(self)
+        layout_menu.addSeparator()
+        layout_menu.addAction('Music…', self.music_dialog)
+        layout_menu.addAction('Logo library…', self.add_logos)
+        more_menu = QMenu('Review and export', self)
         self.show_in_preview = QAction('Show in preview', self)
         self.show_in_preview.setEnabled(False)
         self.show_in_preview.triggered.connect(self.request_preview)
@@ -101,18 +104,14 @@ class SheetEditor(QWidget):
         more_menu.addSeparator()
         more_menu.addAction('Export CSV…', self.export_csv)
 
-        logos_button = _tool('Logos…', 'Add logo artwork as a new row, or append to the selected logo row')
-        logos_button.clicked.connect(self.add_logos)
+        insert_menu.addSeparator()
+        insert_menu.addMenu(more_menu)
         self.arrange_button = _tool('Side by side…', 'Set the selected groups next to each other in columns.\n'
                                     'Select rows across two or more groups (blank rows separate groups).')
         actions = QHBoxLayout()
         actions.setSpacing(4)
         actions.addWidget(_tool('Rows', 'Insert or delete rows', insert_menu))
-        actions.addWidget(logos_button)
-        self.music_button = _tool('Music…', 'Mark song blocks and arrange music credits')
-        self.music_button.clicked.connect(self.music_dialog)
-        actions.addWidget(self.music_button)
-        actions.addWidget(_tool('Layout', 'How rows with only column B filled are set', layout_menu))
+        actions.addWidget(_tool('Layout', 'Choose section types, name-column layouts, music or logos', layout_menu))
         actions.addWidget(self.arrange_button)
         actions.addStretch(1)
         self.expand_button = _tool('', 'Expand spreadsheet')
@@ -120,7 +119,6 @@ class SheetEditor(QWidget):
         self.expand_button.setAccessibleName('Expand spreadsheet')
         self.expand_button.setFocusPolicy(Qt.NoFocus)
         actions.addWidget(self.expand_button)
-        actions.addWidget(_tool('···', 'More', more_menu))
 
         # ---- row 2: find and review ----------------------------------------
         self.search = QLineEdit()
@@ -150,7 +148,7 @@ class SheetEditor(QWidget):
         self.finding_note = QLabel()
         self.finding_note.setWordWrap(True)
         self.dismiss_button = _tool('Dismiss', "I've checked this — stop flagging it.\n"
-                                    'It comes back if the text changes; restore dismissed problems under ···.')
+                                    'It comes back if the text changes; restore dismissed problems under Rows → Review and export.')
         self.dismiss_button.clicked.connect(lambda: self.dismiss())
         self._finding_bar = QWidget()
         self._finding_bar.setObjectName('findingNote')
@@ -539,6 +537,43 @@ class SheetEditor(QWidget):
         rows[row] = [' | '.join(f'[Logo: {label}]' for label in labels), '', '']
         self._fill(rows)
         self._select_cell(row, 0)
+        self._changed()
+
+    def remove_logo_labels(self, labels, start, end):
+        """Remove selected slots, including placeholders, within one logo section."""
+        labels = set(labels)
+        rows = self.rows()
+        if not labels or not (0 <= start <= end < len(rows)):
+            return
+        changed = False
+        for row in range(start, end + 1):
+            if rows[row][2]:
+                continue
+            current = ingest.logo_labels(rows[row][0] or rows[row][1])
+            if not current or not labels.intersection(current):
+                continue
+            kept = [label for label in current if label not in labels]
+            column = 0 if rows[row][0] else 1
+            rows[row][column] = ' | '.join(f'[Logo: {label}]' for label in kept)
+            changed = True
+        if not changed:
+            return
+        remaining = {label for b,c,d in rows if not d for label in ingest.logo_labels(b or c)}
+        for label in labels - remaining:
+            self.project.logos.pop(label, None)
+            self.project.logo_settings.pop(label, None)
+        arrangements_ = []
+        for item in self.project.arrangements:
+            present = {label for r in range(max(0,item['start']),min(len(rows),item['end']+1))
+                       if not rows[r][2] for label in ingest.logo_labels(rows[r][0] or rows[r][1])}
+            if item.get('logo_grid') and not present:
+                continue
+            if 'logo_order' in item:
+                item['logo_order'] = [label for label in item['logo_order'] if label in present]
+            arrangements_.append(item)
+        self.project.arrangements[:] = arrangements_
+        self._fill(rows)
+        self._select_cell(start,0)
         self._changed()
 
     def apply_logo_cells(self, cells, name=None, path=None):

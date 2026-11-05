@@ -99,7 +99,7 @@ Export, with the preview on the right and the **Export** button always in the he
   Other populated cells on a row must be included so neighboring credits are not lost.
   Conversion supports undo and saves with the project.
 
-  **Logos…** opens the searchable logo library (also **Logos → Logo library…**).
+  **Layout → Logo library…** opens the searchable logo library (also **Logos → Logo library…**).
   Search **Official sources** for the starter catalog: Panavision, Millennium DXL,
   Filmed in Panavision, Panalux, LEE Filters, Canon and TCS download directly from
   their owners, with artwork variants and usage notes. Kodak, Dolby, Cinema EOS and
@@ -157,7 +157,7 @@ Export, with the preview on the right and the **Export** button always in the he
   The settings are saved in the project and used again for revisions. On the command line they
   are `--sheet`, `--columns B,C,D-F` and `--start-row`.
 
-- **Explicit sections** — select rows in Credits and choose **Music…** to define song
+- **Explicit sections** — select rows in Credits and choose **Layout → Music…** to define song
   blocks without relying on quotation marks. Song boundaries can be split, merged or
   edited by row number. Choose stacked or 2–6-column layouts, alignment and spacing;
   **Music typography…** opens the shared song/label/name style controls under Look.
@@ -476,3 +476,14 @@ between the widest entries in adjacent columns.
 Special thanks defaults to **Name order → Across rows — spreadsheet order**: the
 first two names share a display row in a two-column layout. Choose **Down each
 column** to fill the left column before the right. Entries and source rows stay intact.
+
+In the Logos tab, **Replace selected logo**, **Add logo**, **Remove logo**,
+**Logo library** and **Show locations** manage artwork and placeholders. Remove logo
+removes selected slots from the current section, supports undo and keeps original
+artwork files. Shared logos in other sections stay assigned.
+
+The Credits toolbar contains **Rows**, **Layout**, **Side by side…** and the expand
+icon. **Layout** includes Music, Logo block and Logo library. **Rows → Review and
+export** holds preview-following, dismissed-warning, change-mark and CSV controls.
+Side by side arranges whole credit groups next to each other; section layouts set
+the type and name columns within a section.

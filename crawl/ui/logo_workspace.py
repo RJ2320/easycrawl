@@ -45,11 +45,17 @@ class LogoWorkspace(QWidget):
         apply.clicked.connect(self.apply_grid)
         library = QPushButton('Logo library…')
         library.clicked.connect(self.open_library)
-        add = QPushButton('Add artwork from file…')
+        add = QPushButton('Add logo…')
         add.clicked.connect(self.add_artwork)
-        replace_button = QPushButton('Replace selected artwork…')
+        replace_button = QPushButton('Replace selected logo…')
+        self.replace_button = replace_button
+        self.remove_button = QPushButton('Remove logo')
+        self.remove_button.clicked.connect(self.remove_artwork)
+        self.replace_button.setEnabled(False)
+        self.remove_button.setEnabled(False)
         replace_button.clicked.connect(self.replace_artwork)
-        show = QPushButton('Show location in Credits')
+        show = QPushButton('Show locations')
+        show.setToolTip('Show this logo section in the Credits spreadsheet')
         show.clicked.connect(lambda: self.current() and self.show_row.emit(self.current()['start'] + 1))
         buttons = QHBoxLayout()
         for label, direction in [('Move earlier', -1), ('Move later', 1)]:
@@ -66,6 +72,7 @@ class LogoWorkspace(QWidget):
         self.color_mode.currentIndexChanged.connect(self._color_changed)
         layout.addWidget(replace_button)
         layout.addWidget(add)
+        layout.addWidget(self.remove_button)
         layout.addWidget(library)
         layout.addWidget(show)
         self.canvas = QWidget()
@@ -186,6 +193,8 @@ class LogoWorkspace(QWidget):
             return
         items = [item for item in self.build.layout.logos if item.label in section['labels']]
         if not items:
+            self.view.set_strip(None, 1, self.project.look.width, self.project.look.height, 1, 0, [])
+            self.view.set_logos([])
             return
         key = tuple(section['labels'])
         top = min(item.y for item in items) - 160
@@ -269,7 +278,7 @@ class LogoWorkspace(QWidget):
         self.refresh()
 
     def add_artwork(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, 'Add logo artwork', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Add logo', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
         if not paths:
             return
         section = self.current()
@@ -279,18 +288,30 @@ class LogoWorkspace(QWidget):
         self.refresh()
 
     def replace_artwork(self):
-        current = self.artwork.currentItem()
-        if not current:
+        selected = self.artwork.selectedItems()
+        if len(selected) != 1:
             return
-        path, _ = QFileDialog.getOpenFileName(self, 'Replace logo artwork', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
+        current = selected[0]
+        path, _ = QFileDialog.getOpenFileName(self, 'Replace selected logo', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
         if path:
             self.project.logos[current.text()] = path
-            self.changed.emit()
+            self.editor._changed()
+            self.refresh()
+
+    def remove_artwork(self):
+        section = self.current()
+        labels = {item.text() for item in self.artwork.selectedItems()}
+        if not section or not labels:
+            return
+        self.editor.remove_logo_labels(labels, section['start'], section['end'])
+        self.refresh()
 
     def _list_selection(self):
         labels = {item.text() for item in self.artwork.selectedItems()}
         self.view.set_selection(labels)
         self.selection_count.setText(f'{len(labels)} selected')
+        self.replace_button.setEnabled(len(labels) == 1)
+        self.remove_button.setEnabled(bool(labels))
         self.align_button.setEnabled(len(labels) >= 2)
         self.sync_selection(next(iter(labels)) if len(labels) == 1 else '')
 
