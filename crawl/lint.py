@@ -4,7 +4,7 @@ Checks
   placeholder   template leftovers ("Name 3", "(clear field)", "Production Company")
   empty         a role with no names
   duplicate     the same name twice in one list, or the same role twice
-  near-dup      names that differ by a typo (edit distance) across the crawl
+  near-dup      names that differ by a typo within the same section
   logo          bracketed logo slots that still need artwork
 """
 
@@ -116,39 +116,54 @@ def _duplicates(crawl: Crawl) -> List[Finding]:
 
 
 def _near_duplicates(crawl: Crawl, ratio: float) -> List[Finding]:
-    """Names anywhere in the crawl that are one typo apart."""
-    names = []  # (norm, original, row)
-    for b in crawl.blocks():
-        if isinstance(b, RolePair):
-            names += [(_norm(n), n, b.row, "name") for n in b.names]
-        elif isinstance(b, ListBlock):
-            names += [(_norm(n), n, b.row + k, "list") for k, n in enumerate(b.names)]
+    """Compare spellings within a headed section, never across departments.
+
+    Blank rows do not end a headed section. For sheets without headings,
+    each blank-separated group is its own comparison scope.
+    """
+    sections = []
+    names = []
+    has_header = False
+    for group in crawl.groups:
+        if not has_header:
+            names = []
+            sections.append(names)
+        for block in group.blocks:
+            if isinstance(block, Header):
+                names = []
+                sections.append(names)
+                has_header = True
+            elif isinstance(block, RolePair):
+                names.extend((_norm(n), n, block.row, "name") for n in block.names)
+            elif isinstance(block, ListBlock):
+                names.extend((_norm(n), n, block.row + k, "list") for k, n in enumerate(block.names))
 
     out = []
-    seen_pairs = set()
-    for i in range(len(names)):
-        a_norm, a, a_row, _ = names[i]
-        if len(a_norm) < 6:
-            continue
-        for j in range(i + 1, len(names)):
-            b_norm, b, b_row, target = names[j]
-            if a_norm == b_norm or a_norm[0] != b_norm[0]:
+    for names in sections:
+        seen_pairs = set()
+        for i in range(len(names)):
+            a_norm, a, a_row, _ = names[i]
+            if len(a_norm) < 6:
                 continue
-            # Compare the shorter against the same-length head of the longer, so
-            # "Lelsey Bohm" still matches "Lesley Bohm Photography".
-            short, long = sorted((a_norm, b_norm), key=len)
-            head = long[:len(short) + 1].rstrip()
-            if abs(len(short) - len(head)) > 4:
-                continue
-            r = SequenceMatcher(None, short, head).ratio()
-            if r >= ratio and _first_word_close(a_norm, b_norm):
-                key = (a_norm, b_norm)
-                if key in seen_pairs:
+            for j in range(i + 1, len(names)):
+                b_norm, b, b_row, target = names[j]
+                if a_norm == b_norm or a_norm[0] != b_norm[0]:
                     continue
-                seen_pairs.add(key)
-                out.append(Finding("near-dup", "warning", b_row,
-                                   f"{b!r} looks like {a!r} (row {a_row})", target,
-                                   f"near-dup|{a_norm}|{b_norm}"))
+                # Compare the shorter against the same-length head of the longer, so
+                # "Lelsey Bohm" still matches "Lesley Bohm Photography".
+                short, long = sorted((a_norm, b_norm), key=len)
+                head = long[:len(short) + 1].rstrip()
+                if abs(len(short) - len(head)) > 4:
+                    continue
+                r = SequenceMatcher(None, short, head).ratio()
+                if r >= ratio and _first_word_close(a_norm, b_norm):
+                    key = (a_norm, b_norm)
+                    if key in seen_pairs:
+                        continue
+                    seen_pairs.add(key)
+                    out.append(Finding("near-dup", "warning", b_row,
+                                       f"{b!r} looks like {a!r} (row {a_row})", target,
+                                       f"near-dup|{a_norm}|{b_norm}"))
     return out
 
 

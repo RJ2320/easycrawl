@@ -131,6 +131,9 @@ class Project:
                 for key in ("song_gap", "title_gap", "inline_gap"):
                     if key in item:
                         item[key] = int(round(item[key] * factor))
+            for item in self.overrides:
+                if item.get('kind') == 'thanks' and 'column_gap' in item:
+                    item['column_gap'] = int(round(item['column_gap'] * factor))
             self.timing.speed = max(1, int(round(self.timing.speed * factor)))
         return factor
 

@@ -43,7 +43,9 @@ class LogoWorkspace(QWidget):
         form.addRow('Column spacing', self.gap)
         apply = QPushButton('Apply logo grid')
         apply.clicked.connect(self.apply_grid)
-        add = QPushButton('Add artwork…')
+        library = QPushButton('Logo library…')
+        library.clicked.connect(self.open_library)
+        add = QPushButton('Add artwork from file…')
         add.clicked.connect(self.add_artwork)
         replace_button = QPushButton('Replace selected artwork…')
         replace_button.clicked.connect(self.replace_artwork)
@@ -64,6 +66,7 @@ class LogoWorkspace(QWidget):
         self.color_mode.currentIndexChanged.connect(self._color_changed)
         layout.addWidget(replace_button)
         layout.addWidget(add)
+        layout.addWidget(library)
         layout.addWidget(show)
         self.canvas = QWidget()
         canvas_layout = QVBoxLayout(self.canvas)
@@ -257,6 +260,13 @@ class LogoWorkspace(QWidget):
         labels[row], labels[target] = labels[target], labels[row]
         cfg['logo_order'] = labels
         self.editor._changed()
+
+    def open_library(self):
+        section = self.current()
+        if section:
+            self.editor.table.setCurrentCell(section['end'], 0)
+        self.editor.add_logos()
+        self.refresh()
 
     def add_artwork(self):
         paths, _ = QFileDialog.getOpenFileNames(self, 'Add logo artwork', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')

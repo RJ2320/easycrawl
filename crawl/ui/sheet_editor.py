@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 
 from .. import arrangements, ingest
 from .arrangement_table import ArrangementTable
-from .widgets import _spin, panel_expand_icon, resettable
+from .widgets import _spin, panel_expand_icon, resettable, default_look
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
@@ -28,7 +28,7 @@ LAYOUT_LABELS = {
     'thanks': 'Special thanks',
 }
 LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles (names to come)', 'list': 'List in columns',
-                'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…'}
+                'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
 UNDO_LIMIT = 200
 
 
@@ -513,7 +513,7 @@ class SheetEditor(QWidget):
 
     # ---- logos -----------------------------------------------------------------
 
-    def add_logo_paths(self, paths):
+    def add_logo_paths(self, paths, names=None):
         """Append to a selected logo row, otherwise insert a new row after selection."""
         if not paths:
             return
@@ -526,8 +526,9 @@ class SheetEditor(QWidget):
                 arrangements.insert_row(ranges, row)
             rows.insert(row, ['', '', ''])
         used = {label for b, c, d in rows for label in ingest.logo_labels(b or c)} | set(self.project.logos)
-        for path in paths:
-            base = Path(path).stem.replace('|', '-').replace('[', '').replace(']', '') or 'Logo'
+        for index, path in enumerate(paths):
+            name = names[index] if names and index < len(names) else Path(path).stem
+            base = name.replace('|', '-').replace('[', '').replace(']', '') or 'Logo'
             label, n = base, 2
             while label in used:
                 label = f'{base} {n}'
@@ -540,10 +541,137 @@ class SheetEditor(QWidget):
         self._select_cell(row, 0)
         self._changed()
 
+    def apply_logo_cells(self, cells, name=None, path=None):
+        """Convert selected entries in place, without consuming neighboring text."""
+        from ..music import without_rows
+        rows = self.rows()
+        cells = sorted(set(cells))
+        if not cells or any(not (0 <= r < len(rows) and 0 <= c < 3) for r,c in cells):
+            raise ValueError('Select the cell or cells to turn into logos first.')
+        populated = [(r,c) for r,c in cells if rows[r][c].strip()]
+        cells = populated or (cells if len(cells)==1 else [])
+        if not cells:
+            raise ValueError('Select text entries, or one empty cell for a new logo placeholder.')
+        if (name is not None or path is not None) and len(cells)!=1:
+            raise ValueError('Select one cell to choose a custom name or assign artwork.')
+        selected = set(cells)
+        chosen = {r for r,c in cells}
+        for r in chosen:
+            if any(rows[r][c].strip() and (r,c) not in selected for c in range(3)):
+                raise ValueError('This row has other credit text. Select all entries on that row to turn them into logos, or move the logo to its own row first.')
+        if any(block['start']<=r<=block['end'] for block in self.project.music_blocks for r in chosen):
+            raise ValueError('Return this music block to automatic before turning its cells into logos.')
+        if path and not Path(path).is_file():
+            raise ValueError('The selected artwork file is no longer available.')
+        outside = {label for r,row in enumerate(rows) if r not in chosen
+                   for label in ingest.logo_labels(row[0] or row[1])}
+        old = {label for r,c in cells for label in ingest.logo_labels(rows[r][c])}
+        used = outside | (set(self.project.logos) - (old - outside))
+        assigned = dict(self.project.logos)
+        converted = {}
+        for r,c in cells:
+            existing = ingest.logo_labels(rows[r][c])
+            if len(existing)>1 and (name is not None or path):
+                raise ValueError('This cell already contains several logos. Edit them in the Logos tab.')
+            values = [name] if name is not None else existing or [rows[r][c]]
+            for value in values:
+                base = str(value).replace('|','-').replace('[','').replace(']','').strip() or 'Logo'
+                label = base
+                n = 2
+                while label in used:
+                    label = f'{base} {n}'
+                    n += 1
+                used.add(label)
+                converted.setdefault(r,[]).append(label)
+                if path:
+                    assigned[label] = str(Path(path).resolve())
+                elif existing and value in self.project.logos:
+                    assigned[label] = self.project.logos[value]
+        for r,labels in converted.items():
+            rows[r] = [' | '.join(f'[Logo: {label}]' for label in labels),'','']
+        overrides = []
+        for item in self.project.overrides:
+            for piece in without_rows([item], chosen):
+                if item['kind']=='thanks' and piece['start']!=item['start']:
+                    piece['title']=False
+                overrides.append(piece)
+        self.project.overrides[:] = overrides
+        self.project.logos.clear()
+        self.project.logos.update(assigned)
+        self._fill(rows)
+        self._select_cell(min(chosen),0)
+        self._changed()
+
+    def logo_block_dialog(self):
+        cells = sorted({(index.row(),index.column()) for index in self.table.selectedIndexes()})
+        if not cells and self.table.currentRow()>=0:
+            cells=[(self.table.currentRow(),max(0,self.table.currentColumn()))]
+        rows=self.rows()
+        populated=[(r,c) for r,c in cells if rows[r][c].strip()]
+        cells=populated or cells
+        if len(cells)>1 and not populated:
+            QMessageBox.information(self,'Select a cell','Select one empty cell, or populated entries to turn into logos.')
+            return
+        if not cells:
+            QMessageBox.information(self,'Select a cell','Select the cell to turn into a logo block first.')
+            return
+        single=len(cells)==1
+        if single and len(ingest.logo_labels(rows[cells[0][0]][cells[0][1]]))>1:
+            QMessageBox.information(self,'Multiple logos','This cell already contains multiple logos. Use the Logos tab to edit their artwork.')
+            return
+        dialog=QDialog(self)
+        dialog.setWindowTitle('Convert to logo block')
+        dialog.resize(490,230)
+        layout=QVBoxLayout(dialog)
+        note=QLabel('The selected entries become logo placeholders in their existing rows. No new rows are inserted. You can assign artwork now or later in Logos.')
+        note.setWordWrap(True);layout.addWidget(note)
+        name=QLineEdit()
+        if single:
+            value=rows[cells[0][0]][cells[0][1]]
+            labels=ingest.logo_labels(value)
+            name.setText(labels[0] if labels else value or 'Logo')
+            form=QFormLayout();form.addRow('Logo name',name);layout.addLayout(form)
+        artwork={'path':None}
+        status=QLabel('No new artwork selected — keep a placeholder or existing artwork.')
+        status.setWordWrap(True);layout.addWidget(status)
+        if single:
+            actions=QHBoxLayout()
+            browse=QPushButton('Choose file…')
+            library=QPushButton('Choose from logo library…')
+            def choose_file():
+                path,_=QFileDialog.getOpenFileName(dialog,'Logo artwork','','Images (*.png *.tif *.tiff *.jpg *.jpeg)')
+                if path:
+                    artwork['path']=path;status.setText(Path(path).name)
+            def choose_library():
+                from .logo_library_dialog import LogoLibraryDialog
+                try:
+                    picker=LogoLibraryDialog(self.project.logos,dialog)
+                    if picker.exec()==QDialog.Accepted:
+                        artwork['path']=picker.selected_paths[0]
+                        status.setText(picker.selected_names[0])
+                except (OSError,ValueError) as error:
+                    QMessageBox.information(dialog,'Cannot open library',str(error))
+            browse.clicked.connect(choose_file);library.clicked.connect(choose_library)
+            actions.addWidget(browse);actions.addWidget(library);layout.addLayout(actions)
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        def accept():
+            try:
+                self.apply_logo_cells(cells,name=name.text() if single else None,path=artwork['path'])
+            except ValueError as error:
+                QMessageBox.information(dialog,'Cannot convert to logos',str(error))
+                return
+            dialog.accept()
+        buttons.accepted.connect(accept);buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons);dialog.exec()
+
     def add_logos(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, 'Add logos side by side', '',
-                                               'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
-        self.add_logo_paths(paths)
+        from .logo_library_dialog import LogoLibraryDialog
+        try:
+            dialog = LogoLibraryDialog(self.project.logos, self)
+            if dialog.exec() == QDialog.Accepted:
+                self.add_logo_paths(dialog.selected_paths, dialog.selected_names)
+        except (OSError, ValueError) as error:
+            QMessageBox.information(self, 'Cannot open logo library', str(error))
 
     def export_csv(self):
         path, _ = QFileDialog.getSaveFileName(self, 'Export edited credits', 'credits-edited.csv', 'CSV (*.csv)')
@@ -609,10 +737,14 @@ class SheetEditor(QWidget):
         menu.addSeparator()
         layout = menu.addMenu('Layout')
         current = self.override_at(self.table.currentRow())
+        row = self.table.currentRow()
+        data = self.rows()
+        logo = 0 <= row < len(data) and not data[row][2] and ingest.logo_labels(data[row][0] or data[row][1])
+        current_kind = 'logo' if logo else current['kind'] if current else 'auto'
         for kind, label in LAYOUT_SHORT.items():
             action = layout.addAction(label, lambda k=kind: self._apply_layout_to_selection(k))
             action.setCheckable(True)
-            action.setChecked((current['kind'] if current else 'auto') == kind)
+            action.setChecked(current_kind == kind)
         if self.current_arrangement() is not None:
             menu.addAction('Edit side-by-side arrangement…', lambda: self.arrange_dialog(edit=True))
             menu.addAction('Remove arrangement', self.remove_arrangement)
@@ -646,6 +778,9 @@ class SheetEditor(QWidget):
         return next((o for o in self.project.overrides if o['start'] <= row <= o['end']), None)
 
     def _apply_layout_to_selection(self, kind):
+        if kind == 'logo':
+            self.logo_block_dialog()
+            return
         if kind == 'thanks':
             self.thanks_dialog()
             return
@@ -664,6 +799,8 @@ class SheetEditor(QWidget):
             raise ValueError(f'Unknown layout {kind!r}.')
         rows = self.rows()
         if kind == 'thanks':
+            if options.get('flow','across') not in ('across','down'):
+                raise ValueError('Choose across rows or down columns for name order.')
             columns = options.get('columns', 3)
             if not 1 <= columns <= 6:
                 raise ValueError('Choose 1–6 name columns.')
@@ -671,7 +808,10 @@ class SheetEditor(QWidget):
             if width is not None and not 1 <= width <= 100:
                 raise ValueError('Choose a section width between 1% and 100% of the frame.')
             pixels = self.project.look.list_width if width is None else self.project.look.width * width / 100
-            if pixels <= (columns - 1) * self.project.look.list_column_gap:
+            gap = options.get('column_gap', self.project.look.list_column_gap)
+            if gap < 0:
+                raise ValueError('Column gap cannot be negative.')
+            if pixels <= (columns - 1) * gap:
                 raise ValueError('The columns have no room for text. Increase the section width or reduce the column gap.')
         if kind not in ('auto', 'legal', 'thanks') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
                                       for r in selected if r < len(rows)):
@@ -828,14 +968,22 @@ class SheetEditor(QWidget):
         width=_spin(1,100,' % of frame')
         inherited=round(100*self.project.look.list_width/self.project.look.width)
         width.setValue(current.get('width_percent',inherited) if current else 55)
-        width.setToolTip('Total width occupied by this thanks section. Smaller values bring the columns closer together. Long names wrap to fit.')
+        width.setToolTip('Maximum width before names wrap. Columns fit their text and stay together instead of filling unused width.')
+        gap=_spin(0,1000,' px')
+        gap.setValue(current.get('column_gap',self.project.look.list_column_gap) if current else self.project.look.list_column_gap)
+        flow=QComboBox()
+        flow.addItem('Across rows — spreadsheet order','across')
+        flow.addItem('Down each column','down')
+        flow.setCurrentIndex(flow.findData(current.get('flow','across') if current else 'across'))
         form=QFormLayout();form.addRow('',title);form.addRow('Name columns',columns)
-        form.addRow('Overall section width',resettable(width,lambda:55,'thanks section width'))
+        form.addRow('Name order',flow)
+        form.addRow('Maximum section width',resettable(width,lambda:55,'thanks section width'))
+        form.addRow('Space between columns',resettable(gap,lambda:default_look(self.project).list_column_gap,'thanks column gap'))
         layout.addLayout(form)
         buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         def accept():
             try:
-                self.apply_layout(selected,'thanks',title=title.isChecked(),columns=columns.value(),width_percent=width.value())
+                self.apply_layout(selected,'thanks',title=title.isChecked(),columns=columns.value(),width_percent=width.value(),column_gap=gap.value(),flow=flow.currentData())
             except ValueError as error:
                 QMessageBox.information(dialog,'Cannot set thanks layout',str(error))
                 return

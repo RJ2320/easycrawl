@@ -35,6 +35,8 @@ class ListBlock:
     columns: int = 3
     row: int = 0
     width_percent: Optional[float] = None  # None follows the shared Look width
+    column_gap: Optional[int] = None  # None follows the shared Look gap
+    flow: str = "down"  # explicit thanks default to across; automatic lists retain down
 
 
 @dataclass

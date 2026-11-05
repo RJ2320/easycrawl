@@ -92,7 +92,29 @@ Export, with the preview on the right and the **Export** button always in the he
   a labelled band marks the arrangement; put the cursor inside it and the button becomes **Edit**.
   Blocks fill left to right and align at the top; an incomplete last row is centred.
 
-  **Logos…** inserts artwork as a new row, side by side; select an existing logo row first to
+  **Layout → Logo block…** converts selected cells into logo entries in their existing
+  rows. Use the cell text as the logo name, or choose a name for an empty cell. Leave
+  a placeholder, assign a file, or choose artwork from the logo library. Select multiple
+  entries to make several placeholders; entries on the same row appear side by side.
+  Other populated cells on a row must be included so neighboring credits are not lost.
+  Conversion supports undo and saves with the project.
+
+  **Logos…** opens the searchable logo library (also **Logos → Logo library…**).
+  Search **Official sources** for the starter catalog: Panavision, Millennium DXL,
+  Filmed in Panavision, Panalux, LEE Filters, Canon and TCS download directly from
+  their owners, with artwork variants and usage notes. Kodak, Dolby, Cinema EOS and
+  SAG-AFTRA entries link to their official resources when manual artwork or approval
+  is needed. Use **Open official source / guidelines** to check current requirements.
+
+  **Import my logos…** copies artwork into a private local **My logos** collection,
+  available in every project. **Save project logos to My logos** saves the current
+  project's assigned artwork for reuse. Names and tags are searchable. Nothing is
+  uploaded. Downloads are cached for offline use; checking for newer artwork creates
+  a separate version and never changes logos already used in a saved project.
+  Removing a personal entry hides it from the library while retaining files needed
+  by existing projects. Original source files can be moved after importing.
+
+  Choose a logo/variant and **Add to credits** to insert artwork as a new row, side by side; select an existing logo row first to
   append to it. You can also drop image files on the window. Logos are measured by their artwork,
   not their file — transparent or black margins are trimmed — so resolution and canvas size don't
   affect how big a logo appears. **Look → Show advanced settings → Balance different logo shapes** sets how different
@@ -144,7 +166,7 @@ Export, with the preview on the right and the **Export** button always in the he
   Under **Layout**, **Legal text** explicitly treats the selected text as legal copy,
   even when it is short or has no copyright marker. **Special thanks…** gives each
   selected thanks section an optional first-row heading, its own 1–6 name columns and
-  **Overall section width** (% of frame). New layouts default to a compact 55% width;
+  **Maximum section width** (% of frame) and **Space between columns**. New layouts default to a compact 55% width;
   the reset arrow restores 55%. Saved shared widths remain unchanged until adjusted.
   Mark multiple thanks sections separately to give them different layouts. Markings
   save with the project, support undo, and shift when rows are inserted or deleted.
@@ -442,3 +464,15 @@ After the PyInstaller build, compile `packaging/windows-installer.iss` with Inno
 passing `/DAppVersion=<version>`. The installer is written under `dist/installer/`.
 The release workflow builds the Windows setup executable and the Mac drag-to-Applications
 disk image automatically on version tags. Mac builds currently target Apple silicon.
+
+Similar-name warnings compare spellings within each section, so names in different
+departments or thanks sections do not trigger cross-section typo warnings. Blank rows
+inside a headed section keep the same comparison scope.
+
+Thanks columns fit the width of their names and are centered as a compact group.
+Maximum section width controls wrapping; Space between columns controls the real gap
+between the widest entries in adjacent columns.
+
+Special thanks defaults to **Name order → Across rows — spreadsheet order**: the
+first two names share a display row in a two-column layout. Choose **Down each
+column** to fill the left column before the right. Entries and source rows stay intact.

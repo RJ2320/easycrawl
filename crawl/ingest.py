@@ -371,7 +371,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
                 names.append("\n".join(value for value in rows[i] if value))
                 i += 1
             group.blocks.append(ListBlock(names=names, columns=section.get('columns',3), row=rownum,
-                                          width_percent=section.get('width_percent')))
+                                          width_percent=section.get('width_percent'),
+                                          column_gap=section.get('column_gap'), flow=section.get('flow','across')))
             continue
         if i in explicit_music:
             block = explicit_music[i]

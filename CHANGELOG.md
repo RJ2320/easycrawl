@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.9
+
+- Add a searchable logo library with verified official-source downloads, artwork variants and offline caching.
+- Save personal and current-project logos privately for reuse, with searchable names and tags.
+- Convert selected spreadsheet cells into logo blocks, with optional file or library artwork and undo.
+- Fit thanks columns around their names; add per-section column gaps and across-row name order.
+- Keep similar-name warnings within a section instead of comparing different departments.
+- Preserve saved-project artwork when newer library versions are downloaded or personal entries are removed.
+
 ## 0.3.8
 
 - Mark music song blocks, legal text and multiple independent Special thanks sections explicitly.

@@ -157,7 +157,7 @@ def test_thanks_wraps_long_and_multiline_entries_without_row_overlap():
     for col in {line.x for line in names}:
         lines=[line for line in names if line.x==col]
         assert all(b.y-a.y>=p.look.list.leading for a,b in zip(lines,lines[1:]))
-    assert result.row_positions[3]==result.row_positions[6]
+    assert result.row_positions[3]==result.row_positions[2]
     assert result.row_positions[4]>max(line.y for line in names if line.row==3)
     e.close()
 
@@ -196,7 +196,7 @@ def test_thanks_widths_are_independent_saved_undoable_and_resolution_relative(tm
     def distance(result,first,last):
         xs=[line.x for line in result.lines if line.style=='list' and first<=line.row<=last]
         return max(xs)-min(xs)
-    assert distance(rendered,2,3)<distance(rendered,5,6)
+    assert distance(rendered,2,3)>0 and distance(rendered,5,6)>0
     e.undo();assert len(p.overrides)==1 and p.overrides[0]['width_percent']==55
     e.redo();assert p.overrides[1]['width_percent']==80
     path=tmp_path/'widths.crawl.json';p.save(str(path));restored=Project.load(str(path))
@@ -229,4 +229,41 @@ def test_thanks_dialog_applies_and_reopens_section_width(monkeypatch):
         dialog.reject();return QDialog.Rejected
     monkeypatch.setattr(QDialog,'exec',reopen)
     e.thanks_dialog();assert p.overrides[0]['width_percent']==63
+    e.close()
+
+
+def test_thanks_columns_fit_names_with_a_real_gap():
+    from crawl import text
+    p=Project(rows=[['','THANKS',''],['Avery Morgan','',''],['Robin Chen','','']])
+    e=SheetEditor(p);e.load(p.rows)
+    e.apply_layout([0,1,2],'thanks',columns=2,title=True,width_percent=80,column_gap=100)
+    result=layout(load_crawl(p),p.look)
+    a,b=[line for line in result.lines if line.style=='list']
+    right=a.x+text.width(p.look.list,a.text)/2
+    left=b.x-text.width(p.look.list,b.text)/2
+    assert abs(left-right-100)<=1
+    assert abs((a.x-text.width(p.look.list,a.text)/2+b.x+text.width(p.look.list,b.text)/2)/2-p.look.center_x)<=1
+    e.apply_layout([0,1,2],'thanks',columns=2,title=True,width_percent=55,column_gap=100)
+    compact=layout(load_crawl(p),p.look)
+    assert [line.x for line in compact.lines if line.style=='list']==[a.x,b.x]
+    p.set_resolution(1920,1080)
+    assert p.overrides[0]['column_gap']==50
+    e.close()
+
+
+@pytest.mark.parametrize('flow,expected',[('across',[(2,3),(4,5),(6,)]),('down',[(2,5),(3,6),(4,)])])
+def test_thanks_flow_preserves_names_source_rows_and_reading_order(flow,expected,tmp_path):
+    rows=[['','THANKS','']]+[[f'Example Person {i}','',''] for i in range(1,6)]
+    p=Project();e=SheetEditor(p);e.load(rows)
+    e.apply_layout(list(range(6)),'thanks',columns=2,title=True,flow=flow)
+    result=layout(load_crawl(p),p.look)
+    lines=[line for line in result.lines if line.style=='list']
+    display=[]
+    for y in sorted({line.y for line in lines}):
+        display.append(tuple(line.row for line in sorted((line for line in lines if line.y==y),key=lambda line:line.x)))
+    assert display==expected
+    assert sorted(line.text for line in lines)==sorted(row[0] for row in rows[1:])
+    assert e.rows()==rows
+    path=tmp_path/'flow.crawl.json';p.save(str(path))
+    assert Project.load(str(path)).overrides[0]['flow']==flow
     e.close()

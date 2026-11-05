@@ -312,23 +312,38 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put) -> 
     block_width = look.list_width if b.width_percent is None else look.width * b.width_percent / 100
     if b.width_percent is not None and not 1 <= b.width_percent <= 100:
         raise ValueError('Thanks section width must be between 1% and 100% of the frame.')
-    col_w = (block_width - (cols - 1) * look.list_column_gap) / cols
-    left = look.center_x - block_width / 2
+    gap = look.list_column_gap if b.column_gap is None else b.column_gap
+    if gap < 0:
+        raise ValueError('Thanks column gap cannot be negative.')
+    col_w = (block_width - (cols - 1) * gap) / cols
     if col_w <= 0:
         raise ValueError('Thanks / partner columns have no room for text. Reduce the column gap or use fewer columns.')
     lead = look.list.leading * flex
-    # Entries fill down each column. A wrapped entry reserves the same row
-    # height in every column so the next names remain aligned and clear.
-    columns = [[text.wrap(look.list, name, col_w) for name in b.names[c * rows:(c + 1) * rows]]
-               for c in range(cols)]
+    # Keep the source index attached to each entry for preview selection,
+    # including wrapped names and an incomplete final display row.
+    if b.flow not in ('across', 'down'):
+        raise ValueError('Choose across rows or down columns for thanks name order.')
+    indices = [list(range(c, n, cols)) if b.flow == 'across'
+               else list(range(c * rows, min((c + 1) * rows, n))) for c in range(cols)]
+    columns = [[text.wrap(look.list, b.names[index], col_w) for index in column]
+               for column in indices]
+    # Width is a wrapping limit, not a command to spread short names apart.
+    # Fit each column to its widest rendered line, then centre the whole block.
+    widths = [max((text.width(look.list, line) for entry in column for line in entry), default=0)
+              for column in columns]
+    left = look.center_x - (sum(widths) + (cols - 1) * gap) / 2
+    centres = []
+    for width in widths:
+        centres.append(int(round(left + width / 2)))
+        left += width + gap
     for r in range(rows):
         line_count = max((len(column[r]) for column in columns if r < len(column)), default=1)
         for c, column in enumerate(columns):
             if r >= len(column):
                 continue
-            cx = int(round(left + c * (col_w + look.list_column_gap) + col_w / 2))
+            cx = centres[c]
             for offset, line in enumerate(column[r]):
-                put(line, "list", cx, "ms", pen + offset * lead, b.row + c * rows + r)
+                put(line, "list", cx, "ms", pen + offset * lead, b.row + indices[c][r])
         pen += line_count * lead
     return pen
 

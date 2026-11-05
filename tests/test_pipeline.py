@@ -75,7 +75,7 @@ def test_lint_finds_known_issues():
     assert "'Name 3'" in msgs and "(clear field)" not in msgs
     assert "'Head of Production' has no names" in msgs
     assert "'Jim Thelen' already listed" in msgs
-    assert "'Lelsey Bohm' looks like 'Lesley Bohm Photography'" in msgs
+    assert "'Lelsey Bohm' looks like 'Lesley Bohm Photography'" not in msgs
     assert "First Assistant Director" in msgs
     assert "logo slot needs artwork" in msgs
 
