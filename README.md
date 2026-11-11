@@ -537,6 +537,28 @@ text in the left column, names in the right column, thanks names in name columns
 and legal text in a centered block. Descriptions explain which text follows each
 style and how local cell formatting takes precedence.
 
+EPS artwork is accepted by **Add logo**, **Replace selected logo**, **Logo block**,
+**My logos** imports and logo relinking. EasyCrawl converts EPS to a PNG up to
+4096 pixels on its longest edge, preserves colors and unpainted transparent areas,
+and keeps the original EPS in the local logo cache. Original artwork is unchanged.
+The PNG is reused on later imports and is the asset saved with the project.
+Initial EPS conversion needs [Ghostscript](https://ghostscript.com/releases/gsdnld.html)
+installed separately. EasyCrawl detects standard Windows installations and common
+Mac/Linux locations; `CRAWL_GHOSTSCRIPT` can point to a custom executable. The app
+provides a setup link when the renderer is missing. Ghostscript is not bundled with
+EasyCrawl. Converted PNGs need no extra helper to preview, export or use on another
+computer after collecting the project's files.
+
+**Format selected cells → Wrap text → On** wraps long text within its credit
+column. To choose exactly where a line breaks, edit the cell and press **Alt+Enter**.
+Headings, role titles and names reserve space for all their lines.
+
+**Special thanks → Left name column alignment / Right name column alignment**
+controls each outer names column independently. Choose **Right** on the left and
+**Left** on the right to align both toward a centered gap. Centered middle-column
+exceptions retain their position, and local cell alignment overrides still take
+precedence over the section settings.
+
 **File → Google Sheet is master for credit text** is enabled by default. Refresh
 compares the full current project text against the Google Sheet, including previously
 skipped differences, capitalization, insertions and deletions. All source changes

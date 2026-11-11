@@ -140,6 +140,8 @@ class LogoLibraryDialog(QDialog):
             self.detail.setText(entry['name']+'\n\n'+entry['usage']+
                 ('\n\nOfficial source checked: '+entry['checked'] if entry['kind']=='official' else '')+
                 ('\nTags: '+entry['tags'] if entry.get('tags') else ''))
+            if entry.get('original',{}).get('format')=='EPS':
+                self.detail.setText(self.detail.text()+'\n\nEPS converted to a high-resolution PNG. Original EPS retained locally.')
         else:
             self.detail.setText('No matching logos. Try a different search or import your own.')
         self.variant.blockSignals(False)
@@ -194,15 +196,21 @@ class LogoLibraryDialog(QDialog):
         self.selection_changed()
 
     def import_files(self):
+        from ..logo_import import LOGO_FILTER
         paths,_=QFileDialog.getOpenFileNames(self,'Save logos for future projects','',
-            'Images (*.png *.tif *.tiff *.jpg *.jpeg *.bmp *.webp)')
+            LOGO_FILTER)
         self.import_paths(paths)
 
     def import_paths(self, paths):
+        from .logo_import import prepare_logo_files
+        paths=list(paths)
+        prepared=prepare_logo_files(self,paths)
+        if prepared is None:
+            return
         failures=[];count=0
-        for path in paths:
+        for original,path in zip(paths,prepared):
             try:
-                self.library.import_file(path)
+                self.library.import_file(path,name=Path(original).stem)
                 count+=1
             except (OSError,ValueError,Image.DecompressionBombError) as error:
                 failures.append(Path(path).name+': '+str(error))

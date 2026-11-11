@@ -340,13 +340,19 @@ class LogoWorkspace(QWidget):
         self.refresh()
 
     def add_artwork(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, 'Add logo', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
+        from pathlib import Path
+        from ..logo_import import LOGO_FILTER
+        from .logo_import import prepare_logo_files
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Add logo', '', LOGO_FILTER)
         if not paths:
+            return
+        prepared=prepare_logo_files(self,paths)
+        if prepared is None:
             return
         section = self.current()
         if section:
             self.editor.table.setCurrentCell(section['end'], 0)
-        self.editor.add_logo_paths(paths)
+        self.editor.add_logo_paths(prepared,names=[Path(path).stem for path in paths])
         self.refresh()
 
     def replace_artwork(self):
@@ -354,9 +360,14 @@ class LogoWorkspace(QWidget):
         if len(selected) != 1:
             return
         current = selected[0]
-        path, _ = QFileDialog.getOpenFileName(self, 'Replace selected logo', '', 'Images (*.png *.tif *.tiff *.jpg *.jpeg)')
+        from ..logo_import import LOGO_FILTER
+        from .logo_import import prepare_logo_files
+        path, _ = QFileDialog.getOpenFileName(self, 'Replace selected logo', '', LOGO_FILTER)
         if path:
-            self.project.logos[current.text()] = path
+            prepared=prepare_logo_files(self,[path])
+            if not prepared:
+                return
+            self.project.logos[current.text()] = prepared[0]
             self.editor._changed()
             self.refresh()
 

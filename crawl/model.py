@@ -44,6 +44,8 @@ class ListBlock:
     flow: str = "down"  # explicit thanks default to across; automatic lists retain down
     source_rows: Optional[List[int]] = None  # original coordinates when hidden rows were skipped
     source_columns: Optional[List[int]] = None  # B/C/D placement for match-sheet layouts
+    left_alignment: str = 'center'
+    right_alignment: str = 'center'
 
     def name_row(self, index):
         return self.source_rows[index] if self.source_rows is not None else self.row + index

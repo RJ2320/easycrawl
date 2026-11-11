@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.18
+
+- Import EPS logos through artwork pickers and My logos with automatic high-resolution PNG conversion and original EPS retention.
+- Detect a separately installed Ghostscript renderer for the initial conversion; cached PNGs work independently afterward.
+- Add per-cell automatic text wrapping and respect manual line breaks in headings and role titles.
+- Target right-click actions at the clicked cell, preserve clicks within a multi-cell selection and hide unavailable layout choices.
+- Add independent left and right Special thanks column alignment, including alignment toward the middle gap.
+
 ## 0.3.17
 
 - Show the actual parsed row type beside spreadsheet row numbers, with details on hover.

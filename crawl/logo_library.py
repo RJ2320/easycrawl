@@ -52,7 +52,7 @@ CATALOG = [
         'For productions captured using Canon cameras or lenses. No endorsement is implied. Review Canon brand guidelines before use.', 'camera lenses'),
     _official('canon-eos', 'Canon — Cinema EOS Monochrome', CANON,
         '',
-        'Canon provides this variant as EPS artwork. Obtain it from the official source and import a raster version. For Cinema EOS productions; review Canon brand guidelines before use.', 'camera lenses cinema eos'),
+        'Canon provides this variant as EPS artwork. Obtain it from the official source and import the EPS into My logos. For Cinema EOS productions; review Canon brand guidelines before use.', 'camera lenses cinema eos'),
     _official('tcs', 'TCS — White', 'https://tcsfilm.com/logos/',
         'https://tcsfilm.com/wp-content/uploads/2023/07/TCS_LOGO_WHITE.png',
         'For screen credits of productions supported with equipment rented from TCS.', 'camera lenses rental technological cinevideo services'),
@@ -139,15 +139,31 @@ class LogoLibrary:
         return asset
 
     def import_file(self, path, name=None, tags=''):
+        from .logo_import import prepare_logo, original_eps
         path = Path(path)
         if path.stat().st_size > MAX_IMAGE:
             raise ValueError('This logo image is too large (maximum 32 MB).')
-        asset = self.store_image(path.read_bytes(), name or path.stem)
+        prepared=Path(prepare_logo(path,root=self.root))
+        original=original_eps(prepared)
+        original_info=None
+        if original:
+            if not original.is_relative_to(self.root.resolve()):
+                data=original.read_bytes()
+                original=self.root.resolve()/'originals'/hashlib.sha256(data).hexdigest()/'source.eps'
+                if not original.exists():
+                    _atomic(original,data)
+            original_info=dict(path=original.relative_to(self.root.resolve()).as_posix(),format='EPS')
+        asset = self.store_image(prepared.read_bytes(), name or path.stem)
         existing = next((entry for entry in self.data['personal'] if entry['assets'][0]['sha256']==asset['sha256']), None)
         if existing:
+            if original and 'original' not in existing:
+                existing['original']=original_info
+                self.save()
             return existing
         entry = dict(id='personal-'+uuid.uuid4().hex, name=name or path.stem, tags=tags,
                      assets=[asset], source='')
+        if original:
+            entry['original']=original_info
         self.data['personal'].append(entry)
         self.save()
         return entry

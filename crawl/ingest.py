@@ -473,6 +473,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
             group.blocks.append(ListBlock(names=names, columns=section.get('columns',3), row=rownum,
                                           width_percent=section.get('width_percent'),
                                           column_gap=section.get('column_gap'), flow=flow,
+                                          left_alignment=section.get('left_alignment','center'),
+                                          right_alignment=section.get('right_alignment','center'),
                                           source_rows=source_rows if flow=='sheet' else None,
                                           source_columns=source_columns if flow=='sheet' else None))
             continue

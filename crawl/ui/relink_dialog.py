@@ -91,10 +91,17 @@ class RelinkDialog(QDialog):
         self.note.setText('Review the replacements. Unique filenames are selected; choose among any duplicate matches.')
 
     def choose(self, row):
+        from ..logo_import import LOGO_FILTER
+        from .logo_import import prepare_logo_files
         path, _ = QFileDialog.getOpenFileName(self, 'Choose replacement', '',
                                              'Sheets (*.csv *.xlsx *.xlsm)' if self.items[row]['key'] == 'source'
-                                             else 'Images (*.png *.jpg *.jpeg *.tif *.tiff)')
+                                             else LOGO_FILTER)
         if path:
+            if self.items[row]['key']!='source':
+                prepared=prepare_logo_files(self,[path])
+                if not prepared:
+                    return
+                path=prepared[0]
             combo = self.choices[row]
             combo.addItem(path, path)
             combo.setCurrentIndex(combo.count() - 1)

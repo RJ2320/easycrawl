@@ -108,6 +108,12 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
         item = formats.get((row, column), {})
         return text.override_style(base_styles[style], item)
 
+    def lines_for(style, value, width, row, column=None, default=True):
+        column=source_column(style,row) if column is None else column
+        if formats.get((row,column),{}).get('wrap',default):
+            return text.wrap(styled(style,row,column),value,width)
+        return value.split('\n')
+
     def put(s: str, style: str, x: int, anchor: str, y: float, source_row=None, column=None, bounds=None) -> None:
         nonlocal bottom
         row = b.row if source_row is None else source_row
@@ -148,7 +154,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                 style = "header" if b.level == 1 else "song"
                 music_title = b.level == 2 and any(isinstance(item, RolePair) and item.music for item in g.blocks)
                 pen += (0 if music_title else look.header_gap_before) * flex
-                title_lines = text.wrap(styles[style], b.text, column_width) if column_width else [b.text]
+                title_lines = lines_for(style,b.text,column_width or look.list_width,b.row,default=bool(column_width))
                 for title_line in title_lines:
                     put(title_line, style, 0 if column_width and alignment == "left" else look.center_x,
                         "ls" if column_width and alignment == "left" else "ms", pen)
@@ -165,7 +171,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     cell_styles = [styled('name', b.row, column) for column in (b.name_columns or range(count))]
                     lead = max(st.leading for st in cell_styles) * flex
                     baseline_ascent = max(text.metrics(st)[0] for st in cell_styles)
-                    wrapped = [text.wrap(st, value, cell_width) for st,value in zip(cell_styles,b.name_cells)]
+                    wrapped = [lines_for('name',value,cell_width,b.row,column) for column,value in zip(b.name_columns or range(count),b.name_cells)]
                     for column, lines in enumerate(wrapped):
                         offset = {'left': 0, 'center': cell_width / 2, 'right': cell_width}[b.name_alignment]
                         anchor = {'left': 'ls', 'center': 'ms', 'right': 'rs'}[b.name_alignment]
@@ -178,19 +184,22 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     continue
                 if b.center_names:
                     for name in b.names:
-                        for line in text.wrap(styles['name'], name, column_width or look.list_width):
+                        for line in lines_for('name',name,column_width or look.list_width,b.row):
                             put(line, 'name', look.center_x, 'ms', pen)
                             pen += styles['name'].leading * flex
                     continue
                 if b.music or (column_width and not b.two_column):
                     role_style, name_style = ("music_role", "music_name") if b.music else ("role", "name")
-                    label_width = text.width(styles[role_style], b.role) if b.role else 0
+                    label_width = max((text.width(styles[role_style],line) for line in b.role.split('\n')),default=0) if b.role else 0
                     gap = look.music_inline_gap if b.role else 0
                     label = b.role
                     # A long role in a narrow block sits above its names;
                     # do not let it spill into the neighboring column.
-                    if column_width and label_width + gap > column_width * .7:
-                        for role_line in text.wrap(styles[role_style], label, column_width):
+                    role_lines=lines_for(role_style,label,column_width or look.music_width,b.row,default=False)
+                    if len(role_lines)>1 or (column_width and label_width + gap > column_width * .7):
+                        if len(role_lines)==1:
+                            role_lines=text.wrap(styles[role_style],label,column_width)
+                        for role_line in role_lines:
                             put(role_line, role_style, 0 if alignment == "left" else look.center_x,
                                 "ls" if alignment == "left" else "ms", pen)
                             pen += styles[role_style].leading * flex
@@ -202,7 +211,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                         label_w = label_width if label else 0
                         inline_gap = gap if label else 0
                         available = max(100, (column_width or look.music_width) - label_w - inline_gap)
-                        for wrapped_index, line in enumerate(text.wrap(styles[name_style], name, available)):
+                        for wrapped_index, line in enumerate(lines_for(name_style,name,available,b.row)):
                             current_label = label if wrapped_index == 0 else ""
                             lw = label_w if current_label else 0
                             sp = inline_gap if current_label else 0
@@ -215,31 +224,31 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                                 put(line, name_style, left + lw + sp, "ls", pen)
                             pen += styles[name_style].leading * flex
                     continue
+                role_lines=lines_for('role',b.role,max(100,((column_width or look.list_width)-look.gutter)/2),b.row,default=False) if b.role else []
+                name_lines=[line for name in b.names for line in lines_for('name',name,max(100,((column_width or look.list_width)-look.gutter)/2),b.row,default=False)]
                 if b.role:
                     # Role shares the first name's baseline.
                     pair_ascent = max(asc['name'], asc['role'])
                     y_base = pen + pair_ascent - asc["role"]
-                    put(b.role, "role", role_x, "rs", y_base)
+                    for offset,line in enumerate(role_lines):
+                        put(line,"role",role_x,"rs",y_base+offset*max(styles['name'].leading,styles['role'].leading)*flex)
                 else:
                     pair_ascent = asc['name']
                 leading = max(styles['name'].leading, styles['role'].leading if b.role else 0)
-                if b.names:
-                    for n in b.names:
-                        put(n, "name", name_x, "ls", pen + pair_ascent - asc['name'])
-                        pen += leading * flex
-                else:
-                    pen += leading * flex
+                for offset,line in enumerate(name_lines):
+                    put(line,"name",name_x,"ls",pen+pair_ascent-asc['name']+offset*leading*flex)
+                pen += max(1,len(role_lines),len(name_lines)) * leading * flex
 
             elif isinstance(b, ListBlock):
                 if column_width and b.flow != 'sheet':
                     for name_index, name in enumerate(b.names):
                         st = styled('list', b.name_row(name_index))
-                        for line in text.wrap(st, name, column_width):
+                        for line in lines_for('list',name,column_width,b.name_row(name_index)):
                             put(line, "list", 0 if alignment == "left" else look.center_x,
                                 "ls" if alignment == "left" else "ms", pen, b.name_row(name_index))
                             pen += st.leading * flex
                 else:
-                    pen = _list(L, b, look, flex, pen, put, styled)
+                    pen = _list(L, b, look, flex, pen, put, styled, lines_for)
 
             elif isinstance(b, LogoRow):
                 L.row_positions.setdefault(b.row, round(pen))
@@ -274,7 +283,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                 pen += h + look.logo_gap * flex
 
             elif isinstance(b, Legal):
-                for ln in text.wrap(styles["legal"], b.text, look.legal_width):
+                for ln in lines_for('legal',b.text,column_width or look.legal_width,b.row):
                     put(ln, "legal", 0 if column_width and alignment == "left" else look.center_x,
                         "ls" if column_width and alignment == "left" else "ms", pen)
                     pen += styles["legal"].leading * flex
@@ -375,7 +384,7 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
     return result
 
 
-def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put, styled) -> float:
+def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put, styled, lines_for) -> float:
     cols = max(1, b.columns)
     n = len(b.names)
     rows = math.ceil(n / cols)
@@ -413,7 +422,7 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put, sty
     if indices is None:
         indices = [list(range(c, n, cols)) if b.flow == 'across'
                    else list(range(c * rows, min((c + 1) * rows, n))) for c in range(cols)]
-    columns = [[text.wrap(entry_styles[index], b.names[index], col_w) if index is not None else [] for index in column]
+    columns = [[lines_for('list',b.names[index],col_w,b.name_row(index),b.source_columns[index] if b.source_columns else None) if index is not None else [] for index in column]
                for column in indices]
     # Width is a wrapping limit, not a command to spread short names apart.
     # Fit each column to its widest rendered line, then centre the whole block.
@@ -424,10 +433,12 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put, sty
     for width in widths:
         centres.append(int(round(left + width / 2)))
         left += width + gap
+    if cols==2 and b.left_alignment=='right' and b.right_alignment=='left':
+        centres=[look.center_x-gap/2-widths[0]/2,look.center_x+gap/2+widths[1]/2]
     for r in range(rows):
         if r in centered:
             index = centered[r]
-            for line in text.wrap(entry_styles[index],b.names[index],block_width):
+            for line in lines_for('list',b.names[index],block_width,b.name_row(index),b.source_columns[index] if b.source_columns else None):
                 put(line,'list',look.center_x,'ms',pen,b.name_row(index),
                     column=b.source_columns[index] if b.source_columns else None)
                 pen += entry_styles[index].leading * flex
@@ -444,9 +455,13 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put, sty
             if index is None:
                 continue
             for offset, line in enumerate(column[r]):
-                put(line, "list", cx, "ms", pen + ascent - text.metrics(entry_styles[index])[0] + offset * lead,
+                align=b.left_alignment if cols>1 and c==0 else b.right_alignment if cols>1 and c==cols-1 else 'center'
+                bounds=(cx-widths[c]/2,cx+widths[c]/2)
+                x={'left':bounds[0],'center':cx,'right':bounds[1]}[align]
+                anchor={'left':'ls','center':'ms','right':'rs'}[align]
+                put(line, "list", x, anchor, pen + ascent - text.metrics(entry_styles[index])[0] + offset * lead,
                     b.name_row(index), column=b.source_columns[index] if b.source_columns else None,
-                    bounds=(cx-widths[c]/2,cx+widths[c]/2))
+                    bounds=bounds)
         pen += line_count * lead
     return pen
 

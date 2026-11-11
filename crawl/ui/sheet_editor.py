@@ -8,7 +8,7 @@ import io
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QItemSelectionModel
 from PySide6.QtGui import QAction, QColor, QFontMetrics, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
@@ -520,6 +520,10 @@ class SheetEditor(QWidget):
         """Append to a selected logo row, otherwise insert a new row after selection."""
         if not paths:
             return
+        from ..logo_import import prepare_logo
+        original_paths=list(paths)
+        paths=[prepare_logo(path) for path in original_paths]
+        names=names or [Path(path).stem for path in original_paths]
         rows = self.rows()
         row = self.table.currentRow()
         labels = ingest.logo_labels(rows[row][0] or rows[row][1]) if row >= 0 and not rows[row][2] else []
@@ -606,6 +610,9 @@ class SheetEditor(QWidget):
             raise ValueError('Return this music block to automatic before turning its cells into logos.')
         if path and not Path(path).is_file():
             raise ValueError('The selected artwork file is no longer available.')
+        if path:
+            from ..logo_import import prepare_logo
+            path=prepare_logo(path)
         outside = {label for r,row in enumerate(rows) if r not in chosen
                    for label in ingest.logo_labels(row[0] or row[1])}
         old = {label for r,c in cells for label in ingest.logo_labels(rows[r][c])}
@@ -682,9 +689,13 @@ class SheetEditor(QWidget):
             browse=QPushButton('Choose file…')
             library=QPushButton('Choose from logo library…')
             def choose_file():
-                path,_=QFileDialog.getOpenFileName(dialog,'Logo artwork','','Images (*.png *.tif *.tiff *.jpg *.jpeg)')
+                from ..logo_import import LOGO_FILTER
+                from .logo_import import prepare_logo_files
+                path,_=QFileDialog.getOpenFileName(dialog,'Logo artwork','',LOGO_FILTER)
                 if path:
-                    artwork['path']=path;status.setText(Path(path).name)
+                    converted=prepare_logo_files(dialog,[path])
+                    if converted:
+                        artwork['path']=converted[0];status.setText(Path(path).name+(' → PNG' if Path(path).suffix.lower()=='.eps' else ''))
             def choose_library():
                 from .logo_library_dialog import LogoLibraryDialog
                 try:
@@ -771,7 +782,7 @@ class SheetEditor(QWidget):
             delete.setText(f'Delete {label}')
         menu.aboutToShow.connect(update)
 
-    def _populate_layout_menu(self, menu):
+    def _populate_layout_menu(self, menu, context=False):
         show_types=menu.addAction('Show row types')
         show_types.setCheckable(True);show_types.setChecked(self._show_row_types)
         show_types.setToolTip('Labels beside row numbers show how each row is interpreted. ✓ = manually marked; * = local text styling. Hover a row label for details.')
@@ -818,7 +829,28 @@ class SheetEditor(QWidget):
             if kind == 'center_name':
                 kind = 'names_center'
             for action in menu.actions()+advanced.actions()+names.actions():
-                if action.isCheckable() and action.data() is not None:action.setChecked(action.data()==kind)
+                if action.isCheckable() and action.data() is not None:
+                    action.setChecked(action.data()==kind)
+                    if context:
+                        value=action.data()
+                        if value=='logo':
+                            selected={(i.row(),i.column()) for i in self.table.selectedIndexes()}
+                            chosen={row for row,col in selected}
+                            valid=bool(selected) and all(not text or (row,col) in selected for row in chosen for col,text in enumerate(data[row]))
+                            valid=valid and not any(block['start']<=row<=block['end'] for block in self.project.music_blocks for row in chosen)
+                        elif value=='music':
+                            valid=bool(self._selected_rows()) and not any(ingest.logo_labels(cell) for row in self._selected_rows() for cell in data[row] if cell)
+                        else:
+                            try:
+                                self._validate_layout(self._selected_rows(),value)
+                                valid=True
+                            except ValueError:
+                                valid=False
+                        action.setVisible(valid)
+            if context:
+                names.menuAction().setVisible(any(action.isVisible() for action in names.actions()))
+                advanced.menuAction().setVisible(any(action.isVisible() for action in advanced.actions()))
+                formatting.menuAction().setVisible(bool(self._text_cells()))
             show_types.blockSignals(True);show_types.setChecked(self._show_row_types);show_types.blockSignals(False)
         menu.aboutToShow.connect(update)
         update()
@@ -864,7 +896,7 @@ class SheetEditor(QWidget):
 
     def apply_cell_format(self, options, *, cells=None, reset=False):
         from .. import text
-        allowed = {'font','size','leading','tracking','bold','italic','uppercase','alignment','color'}
+        allowed = {'font','size','leading','tracking','bold','italic','uppercase','alignment','color','wrap'}
         if set(options) - allowed:
             raise ValueError('Unknown text formatting option.')
         for key in ('size','leading'):
@@ -872,6 +904,8 @@ class SheetEditor(QWidget):
                 raise ValueError('Font size and line spacing must be between 1 and 2000 pixels.')
         if options.get('alignment') not in (None,'left','center','right'):
             raise ValueError('Choose left, center or right alignment.')
+        if options.get('wrap') is not None and not isinstance(options['wrap'],bool):
+            raise ValueError('Choose On, Off or the section default for text wrapping.')
         if options.get('color') is not None:
             import math
             color = options['color']
@@ -955,14 +989,15 @@ class SheetEditor(QWidget):
             enabled.setChecked(all(key in item and item[key]==current[0].get(key) for item in current))
             widget.setEnabled(enabled.isChecked());enabled.toggled.connect(widget.setEnabled)
             form.addRow(enabled,widget);controls[key]=(enabled,widget)
-        for key,label in [('bold','Bold'),('italic','Italic'),('uppercase','Uppercase')]:
+        for key,label in [('bold','Bold'),('italic','Italic'),('uppercase','Uppercase'),('wrap','Wrap text')]:
             value=QComboBox();value.addItem('Use section default',None);value.addItem('On',True);value.addItem('Off',False)
             value.setObjectName('format_' + key)
             if all(key in item and item[key]==current[0].get(key) for item in current):
                 value.setCurrentIndex(1 if current[0][key] else 2)
             form.addRow(label,value);controls[key]=(None,value)
         layout.addLayout(form)
-        hint=QLabel('Font size scales line spacing automatically unless you override line spacing too. Alignment stays within the credit’s column.')
+        hint=QLabel('Wrap text fits long entries inside their column. For an exact line break, edit the cell and press Alt+Enter.\n'
+                    'Font size scales line spacing unless you override line spacing too. Alignment stays within the credit’s column.')
         hint.setWordWrap(True);layout.addWidget(hint)
         buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         reset=buttons.addButton('Use section defaults',QDialogButtonBox.ResetRole)
@@ -992,8 +1027,13 @@ class SheetEditor(QWidget):
             menu.addAction(label,lambda:self.dismiss(flagged))
         menu.addSeparator()
         self._populate_rows_menu(menu.addMenu('Rows'))
-        self._populate_layout_menu(menu.addMenu('Layout'))
-        menu.addAction(self._arrangement_action_text(),self._edit_current_arrangement)
+        self._populate_layout_menu(menu.addMenu('Layout'),context=True)
+        arrangement=menu.addAction(self._arrangement_action_text(),self._edit_current_arrangement)
+        if self.current_arrangement() is None and not self._current_logo_labels():
+            try:
+                arrangements.selection_range(self.rows(),self._selected_rows(),self.arrangement_boundaries())
+            except ValueError:
+                arrangement.setVisible(False)
         if self.current_arrangement() is not None:
             action=menu.addAction('Remove column arrangement',self.remove_arrangement)
             action.setToolTip('Remove the grid layout while keeping the credit text and section markings')
@@ -1003,6 +1043,18 @@ class SheetEditor(QWidget):
 
     def _context_menu(self, global_pos):
         if self.table.rowCount():
+            index=self.table.indexAt(self.table.viewport().mapFromGlobal(global_pos))
+            if index.isValid():
+                flags=QItemSelectionModel.NoUpdate if index in self.table.selectedIndexes() else QItemSelectionModel.ClearAndSelect
+                self.table.setCurrentCell(index.row(),index.column(),flags)
+            else:
+                header=self.table.verticalHeader()
+                point=header.mapFromGlobal(global_pos)
+                row=header.logicalIndexAt(point.y()) if header.rect().contains(point) else -1
+                if row>=0:
+                    if row not in self._selected_rows():
+                        self.table.selectRow(row)
+                    self.table.setCurrentCell(row,max(0,self.table.currentColumn()),QItemSelectionModel.NoUpdate)
             self._build_context_menu().exec(global_pos)
 
     def cell_tooltip(self, row, col):
@@ -1042,16 +1094,20 @@ class SheetEditor(QWidget):
         except ValueError as error:
             QMessageBox.information(self, 'Cannot set layout', str(error))
 
-    def apply_layout(self, selected_rows, kind, **options):
-        """Mark rows as roles / list / center, or 'auto' to clear. Existing
-        overrides are cut around the selection; adjacent same-kind runs merge."""
+    def _validate_layout(self, selected_rows, kind, **options):
+        """Validate without changing the project, also for context-menu choices."""
         selected = sorted(set(selected_rows))
         if not selected:
             raise ValueError('Select the rows to change first.')
         if kind not in ('auto',) + ingest.LAYOUT_KINDS:
             raise ValueError(f'Unknown layout {kind!r}.')
         rows = self.rows()
+        occupied=[rows[r] for r in selected if 0<=r<len(rows) and any(rows[r])]
+        if kind in ('legal','thanks') and any(ingest.logo_labels(value) for row in occupied for value in row if value):
+            raise ValueError('Logo rows keep their own layout. Choose text rows instead.')
         if kind == 'thanks':
+            if any(options.get(key,'center') not in ('left','center','right') for key in ('left_alignment','right_alignment')):
+                raise ValueError('Choose left, center or right alignment for each thanks column.')
             if options.get('flow','across') not in ('across','down','sheet'):
                 raise ValueError('Choose across rows or down columns for name order.')
             columns = options.get('columns', 3)
@@ -1083,10 +1139,15 @@ class SheetEditor(QWidget):
             if (not occupied or any(ingest.logo_labels(b or c) or (c and d)
                     or (not b and c) for b,c,d in occupied)):
                 raise ValueError('Select role/name rows: roles in column B, names in C or D. Keep section headings and logo rows outside this selection.')
-        if not kind.startswith('names_') and kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles', 'heading') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
+        if not kind.startswith('names_') and kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles', 'heading') and not any(rows[r][0] and not rows[r][1] and not rows[r][2] and not ingest.logo_labels(rows[r][0])
                                       for r in selected if r < len(rows)):
             raise ValueError('Layout overrides apply to rows with only column B filled '
                              '(roles or names with nothing in C or D).')
+        return selected
+
+    def apply_layout(self, selected_rows, kind, **options):
+        """Apply an explicit layout in one undo step, preserving unaffected ranges."""
+        selected=self._validate_layout(selected_rows,kind,**options)
         chosen = set(selected)
         pieces = []
         for item in self.project.overrides:
@@ -1274,6 +1335,13 @@ class SheetEditor(QWidget):
         width.setToolTip('Maximum width before names wrap. Columns fit their text and stay together instead of filling unused width.')
         gap=_spin(0,1000,' px')
         gap.setValue(current.get('column_gap',self.project.look.list_column_gap) if current else self.project.look.list_column_gap)
+        left_alignment=QComboBox();right_alignment=QComboBox()
+        left_alignment.setObjectName('thanks_left_alignment');right_alignment.setObjectName('thanks_right_alignment')
+        for widget,key in ((left_alignment,'left_alignment'),(right_alignment,'right_alignment')):
+            for label,value in [('Left','left'),('Center','center'),('Right','right')]:widget.addItem(label,value)
+            widget.setCurrentIndex(widget.findData(current.get(key,'center') if current else 'center'))
+        left_alignment.setToolTip('Alignment within the leftmost names column. Choose Right to align toward the middle gap.')
+        right_alignment.setToolTip('Alignment within the rightmost names column. Choose Left to align toward the middle gap.')
         flow=QComboBox()
         flow.addItem('Match spreadsheet columns','sheet')
         flow.addItem('Across rows — one entry per source row','across')
@@ -1291,13 +1359,17 @@ class SheetEditor(QWidget):
             match=flow.currentData()=='sheet'
             columns.setEnabled(not match)
             if match:columns.setValue(source_column_count())
+            left_alignment.setEnabled(columns.value()>1);right_alignment.setEnabled(columns.value()>1)
         flow.currentIndexChanged.connect(sync_columns)
         title.toggled.connect(sync_columns)
+        columns.valueChanged.connect(lambda *_:(left_alignment.setEnabled(columns.value()>1),right_alignment.setEnabled(columns.value()>1)))
         sync_columns()
         form=QFormLayout();form.addRow('',title);form.addRow('Name columns',columns)
         form.addRow('Name order',flow)
         form.addRow('Maximum section width',resettable(width,lambda:55,'thanks section width'))
         form.addRow('Space between columns',resettable(gap,lambda:default_look(self.project).list_column_gap,'thanks column gap'))
+        form.addRow('Left name column alignment',left_alignment)
+        form.addRow('Right name column alignment',right_alignment)
         heading_format=QPushButton('Heading font and styling…')
         heading_format.setEnabled(title.isChecked());title.toggled.connect(heading_format.setEnabled)
         def format_heading():
@@ -1310,7 +1382,8 @@ class SheetEditor(QWidget):
         buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         def accept():
             try:
-                self.apply_layout(selected,'thanks',title=title.isChecked(),columns=columns.value(),width_percent=width.value(),column_gap=gap.value(),flow=flow.currentData())
+                self.apply_layout(selected,'thanks',title=title.isChecked(),columns=columns.value(),width_percent=width.value(),column_gap=gap.value(),flow=flow.currentData(),
+                                  left_alignment=left_alignment.currentData(),right_alignment=right_alignment.currentData())
             except ValueError as error:
                 QMessageBox.information(dialog,'Cannot set thanks layout',str(error))
                 return
