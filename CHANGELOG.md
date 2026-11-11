@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.14
+
+- Remove unused hidden export and legacy logo-slot controls from Export settings.
+- Keep CSV text export in one location under Export and simplify Rows review tools.
+- Make the export menu label follow the chosen codec or PNG sequence format.
+- Enable Cancel Export only during an active export and disable it after cancellation is requested.
+- Keep the visible preview and Logos inspectors synchronized without legacy hidden controls.
+
 ## 0.3.13
 
 - Unify toolbar and right-click Layout menus, group row operations and remove duplicate commands.

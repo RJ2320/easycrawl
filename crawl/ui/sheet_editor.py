@@ -81,7 +81,7 @@ class SheetEditor(QWidget):
         self._populate_rows_menu(insert_menu)
         layout_menu = QMenu(self)
         self._populate_layout_menu(layout_menu)
-        more_menu = QMenu('Review and export', self)
+        more_menu = QMenu('Review', self)
         self.show_in_preview = QAction('Show in preview', self)
         self.show_in_preview.setEnabled(False)
         self.show_in_preview.triggered.connect(self.request_preview)
@@ -94,8 +94,6 @@ class SheetEditor(QWidget):
         self.restore_action = more_menu.addAction('Restore dismissed problems', self.restore_dismissed)
         self.clear_marks_action = more_menu.addAction('Clear change marks', self.clear_change_marks)
         more_menu.aboutToShow.connect(self._sync_more_menu)
-        more_menu.addSeparator()
-        more_menu.addAction('Export CSV…', self.export_csv)
 
         insert_menu.addSeparator()
         insert_menu.addMenu(more_menu)
@@ -141,7 +139,7 @@ class SheetEditor(QWidget):
         self.finding_note = QLabel()
         self.finding_note.setWordWrap(True)
         self.dismiss_button = _tool('Dismiss', "I've checked this — stop flagging it.\n"
-                                    'It comes back if the text changes; restore dismissed problems under Rows → Review and export.')
+                                    'It comes back if the text changes; restore dismissed problems under Rows → Review.')
         self.dismiss_button.clicked.connect(lambda: self.dismiss())
         self._finding_bar = QWidget()
         self._finding_bar.setObjectName('findingNote')

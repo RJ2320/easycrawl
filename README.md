@@ -484,7 +484,7 @@ artwork files. Shared logos in other sections stay assigned.
 
 The Credits toolbar contains **Rows**, **Layout**, **Side by side…** and the expand
 icon. **Layout** includes Music, Logo block and Logo library. **Rows → Review and
-export** holds preview-following, dismissed-warning, change-mark and CSV controls.
+export** holds preview-following, dismissed-warning and change-mark controls. CSV export is under Export.
 Side by side arranges whole credit groups next to each other; section layouts set
 the type and name columns within a section.
 
@@ -543,3 +543,8 @@ Right-click row insertion/deletion is grouped under **Rows**; the older generic
 **List in columns** option is under **Layout → More layouts**. Music and logo grids
 show **Edit music layout…** or **Edit logo grid…**, opening their dedicated editors
 instead of the generic Side by side dialog.
+
+**Export → Export Credits as CSV…** is the single menu location for source-text
+export. The main export command follows the selected codec or PNG sequence format,
+and Cancel Export is available only while an export is running. Logo artwork is
+managed in Logos and the preview inspectors, not in Export settings.

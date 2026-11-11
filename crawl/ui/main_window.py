@@ -364,8 +364,6 @@ class LookPanel(QWidget):
 
 class OutputPanel(QWidget):
     changed = Signal()
-    render_requested = Signal()
-    logo_setting_requested = Signal(str, dict)   # label, partial {invert, scale, dx, dy}
     resolution_requested = Signal(int, int)      # the window asks about scaling the look, then applies
     fps_requested = Signal(str)
 
@@ -426,10 +424,6 @@ class OutputPanel(QWidget):
         form.addRow("", fu)
         form.addRow("", self.report)
 
-        self.logos_box = QGroupBox("Logo slots")
-        self.logos_layout = QFormLayout(self.logos_box)
-
-        self.render_btn = QPushButton("Export movie")
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         self.result = QLabel("")
@@ -437,12 +431,10 @@ class OutputPanel(QWidget):
         self.result.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         # The Export button itself is in the window header; this tab is its settings.
-        self.render_btn.setVisible(False)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 14, 14, 14)
         lay.setSpacing(10)
         lay.addLayout(form)
-        lay.addWidget(self.logos_box)
         lay.addWidget(self.progress)
         lay.addWidget(self.result)
         lay.addStretch(1)
@@ -463,7 +455,6 @@ class OutputPanel(QWidget):
         self.fusion.toggled.connect(self._apply)
         self.report.toggled.connect(self._apply)
         self.fmt.currentTextChanged.connect(self._apply)
-        self.render_btn.clicked.connect(self.render_requested)
 
     def sync_delivery(self):
         """Show the project's resolution and frame rate (they can change elsewhere)."""
@@ -522,7 +513,6 @@ class OutputPanel(QWidget):
         c = export.CODECS[self.codec.currentData()]
         self.alpha.setEnabled(c.alpha)
         self.fmt.setEnabled(self.fusion.isChecked())
-        self.render_btn.setText("Export PNG sequence" if c.key == "png" else f"Export {c.label}")
 
     def _apply(self, *_):
         p = self.project
@@ -543,42 +533,6 @@ class OutputPanel(QWidget):
         if d:
             self.out_dir.setText(d)
             self._apply()
-
-    def set_logo_slots(self, crawl):
-        while self.logos_layout.rowCount():
-            self.logos_layout.removeRow(0)
-        labels = list(dict.fromkeys(lg.label for lg in crawl.logos())) if crawl else []
-        self.logos_box.setVisible(False)  # Artwork is managed in the dedicated Logos workspace.
-        self._invert_boxes = {}
-        for label in labels:
-            btn = QPushButton(os.path.basename(self.project.logos.get(label, "")) or "Choose image…")
-            btn.clicked.connect(lambda _=False, l=label, b=btn: self._pick_logo(l, b))
-            invert = QCheckBox("Invert")
-            invert.setToolTip("Flip the artwork's colours — for a dark logo on the black crawl.\n"
-                              "Click a logo in the preview to move or resize it.")
-            invert.setChecked(bool(self.project.logo_settings.get(label, {}).get("invert")))
-            invert.toggled.connect(lambda on, l=label: self.logo_setting_requested.emit(l, {"invert": on}))
-            row = QHBoxLayout()
-            row.addWidget(btn, 1)
-            row.addWidget(invert)
-            self.logos_layout.addRow(label, row)
-            self._invert_boxes[label] = invert
-
-    def sync_logo_invert(self, label: str, on: bool):
-        """Reflect a change made elsewhere (the preview's logo bar) without re-emitting."""
-        box = getattr(self, "_invert_boxes", {}).get(label)
-        if box is not None and box.isChecked() != on:
-            box.blockSignals(True)
-            box.setChecked(on)
-            box.blockSignals(False)
-
-    def _pick_logo(self, label: str, btn: QPushButton):
-        path, _ = QFileDialog.getOpenFileName(self, f"Logo for {label}", "", "Images (*.png *.tif *.tiff *.jpg)")
-        if path:
-            self.project.logos[label] = path
-            btn.setText(os.path.basename(path))
-            self.changed.emit()
-
 
 # --------------------------------------------------------------------------- #
 # Main window
@@ -664,8 +618,6 @@ class MainWindow(QMainWindow):
         for panel in (self.timing_panel, self.look_panel, self.output_panel, self.music_panel):
             panel.changed.connect(self._panel_changed)
         self._panel_last = self._panel_state()
-        self.output_panel.render_requested.connect(self.render)
-        self.output_panel.logo_setting_requested.connect(self.set_logo_setting)
         self.output_panel.resolution_requested.connect(self.change_resolution)
         self.output_panel.fps_requested.connect(self.timing_panel.fps.setEditText)
         self.sheet_editor.changed.connect(self._credits_changed)
@@ -792,7 +744,7 @@ class MainWindow(QMainWindow):
         self.header_progress.setVisible(False)
         self.export_btn = QPushButton("Export")
         self.export_btn.setProperty("primary", True)
-        self.export_btn.setToolTip("Render the crawl to a movie  (Ctrl+R)\nCodec and folder are on the Export tab.")
+        self.export_btn.setToolTip("Export the crawl in the selected format  (Ctrl+R)\nFormat and folder are on the Export tab.")
         self.export_btn.clicked.connect(self._export_clicked)
         row = QHBoxLayout(header)
         row.setContentsMargins(14, 8, 12, 8)
@@ -879,6 +831,16 @@ class MainWindow(QMainWindow):
         look = self.project.look
         self.format_chip.setText(f"{look.width} × {look.height}  ·  {self.project.timing.fps:g} fps")
         self.output_panel.sync_delivery()
+        if hasattr(self,'export_action'):
+            self.export_action.setText("Export PNG sequence" if codec.key=="png" else f"Export {codec.label}")
+            self._sync_export_actions()
+
+    def _sync_export_actions(self, running=None):
+        if not hasattr(self,'export_action'):
+            return
+        running=self._exporting() if running is None else running
+        self.export_action.setEnabled(self.build is not None and not running)
+        self.cancel_export_action.setEnabled(running and not getattr(self,'_export_cancel_pending',False))
 
     def _set_chips(self, values):
         for chip, value in zip(self.chips, values):
@@ -889,6 +851,7 @@ class MainWindow(QMainWindow):
         """Export and the transport need a finished layout."""
         if not self._exporting():          # during an export the button stays live, as Cancel
             self.export_btn.setEnabled(self.build is not None)
+        self._sync_export_actions()
         self.preview.play.setEnabled(self.preview.slider.maximum() > 0)
         self.preview.slider.setEnabled(self.preview.slider.maximum() > 0)
 
@@ -1011,7 +974,6 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._act(m, "Save Look As…", None, self.save_look)
         self._act(m, "Load Look…", None, self.load_look)
-        self._act(m, "Export Credits as CSV…", None, self.sheet_editor.export_csv)
         m.addSeparator()
         self._act(m, "Quit", QKeySequence.Quit, self.close)
         self._rebuild_recent_menu()
@@ -1050,14 +1012,17 @@ class MainWindow(QMainWindow):
         gpu.toggled.connect(lambda enabled: QSettings("easycrawl", "EasyCrawl").setValue("preview/gpu", enabled))
 
         r = self.menuBar().addMenu("E&xport")
-        self._act(r, "Export Movie", "Ctrl+R", self.render)
-        self._act(r, "Cancel Export", "Ctrl+.", self.cancel_export)
+        self.export_action = self._act(r, "Export", "Ctrl+R", self.render)
+        self.cancel_export_action = self._act(r, "Cancel Export", "Ctrl+.", self.cancel_export)
+        self.cancel_export_action.setEnabled(False)
         self._act(r, "Export Settings…", None, lambda: self.tabs.setCurrentWidget(self.output_panel))
         r.addSeparator()
+        self._act(r, "Export Credits as CSV…", None, self.sheet_editor.export_csv)
         self._act(r, "Check a Rendered Movie…", None, self.check_movie)
 
         help_menu = self.menuBar().addMenu("&Help")
         self._act(help_menu, "Update EasyCrawl…", None, self.update_app)
+        self._sync_export_label()
 
     def update_app(self):
         if getattr(sys, "frozen", False):
@@ -1394,7 +1359,6 @@ class MainWindow(QMainWindow):
             self.project.output_dir = str(Path(path).parent / "render")
             self.output_panel.load()
             self._panel_last = (self._panel_last[0], self._panel_state()[1])
-        self.output_panel.set_logo_slots(self.crawl)
         self._title()
         if path:
             message = f"Loaded {Path(path).name}: {self.crawl.describe()}"
@@ -1801,7 +1765,6 @@ class MainWindow(QMainWindow):
         self.sheet_editor.commit_undo()
         self._unsaved = True
         self._title()
-        self.output_panel.set_logo_slots(self.crawl)
         if "source" in dialog.replacements and self.project.rows is None:
             self.load_sheet(self.project.source, preserve_edits=True)
         else:
@@ -1821,7 +1784,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Can't collect files", str(e))
             return
         self._unsaved = False
-        self.output_panel.set_logo_slots(self.crawl)
         self._title()
         folder = Path(self.project_path).parent
         if copied:
@@ -1855,7 +1817,6 @@ class MainWindow(QMainWindow):
     def _credits_changed(self):
         self._unsaved = True
         self.crawl = proj.crawl_from_rows(self.project, self.sheet_editor.rows())
-        self.output_panel.set_logo_slots(self.crawl)
         self.schedule_rebuild()
 
     def schedule_rebuild(self):
@@ -2033,7 +1994,6 @@ class MainWindow(QMainWindow):
         if self.preview.view.selected == label:
             self.preview.logo_bar.load(label, cfg)
         self._unsaved = True
-        self.output_panel.sync_logo_invert(label, bool(cfg["invert"]))
         if self.logo_workspace.inspector.label == label:
             self.logo_workspace.sync_selection(label)
         self.sheet_editor.commit_undo()
@@ -2127,6 +2087,7 @@ class MainWindow(QMainWindow):
         box.exec()
 
     def _set_exporting(self, on: bool):
+        self._export_cancel_pending=False
         self.output_panel.progress.setVisible(on)
         self.header_progress.setVisible(on)
         if on:
@@ -2134,13 +2095,16 @@ class MainWindow(QMainWindow):
             self.export_btn.setToolTip("Stop the export and discard the partial file  (Ctrl+.)")
             self.export_btn.setEnabled(True)
         else:
-            self.export_btn.setToolTip("Render the crawl to a movie  (Ctrl+R)\nCodec and folder are on the Export tab.")
+            self.export_btn.setToolTip("Export the crawl in the selected format  (Ctrl+R)\nFormat and folder are on the Export tab.")
             self._sync_export_label()
             self.export_btn.setEnabled(self.build is not None)
+        self._sync_export_actions(on)
 
     def cancel_export(self):
         if self._exporting():
             self._render_worker.cancel()
+            self._export_cancel_pending=True
+            self._sync_export_actions(True)
             self.export_btn.setText("Cancelling…")
             self.export_btn.setEnabled(False)
             self.statusBar().showMessage("Cancelling export…")

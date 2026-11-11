@@ -43,14 +43,6 @@ def test_editor_adds_multiple_logos_and_edits(app, tmp_path):
     assert len(p.rows) == 1
 
 
-def test_output_exposes_logo_row_slots(app):
-    from crawl.ui.main_window import OutputPanel
-    p = Project(rows=[['[Logo: A] | [Logo: B]', '', '']])
-    panel = OutputPanel(p)
-    panel.set_logo_slots(load_crawl(p))
-    assert panel.logos_layout.rowCount() == 2
-
-
 def test_playback_tracks_elapsed_time_and_seeking(app):
     from crawl.ui.widgets import PreviewPanel
     panel = PreviewPanel()
@@ -279,13 +271,15 @@ def test_drag_logo_in_preview_and_logo_bar(app, tmp_path):
     assert p.logo_settings['A']['dx'] == round(96 / k) and p.logo_settings['A']['dy'] == round(48 / k)
     assert win.preview.logo_bar.dx.value() == round(96 / k)
 
-    # The bar edits the same settings; Output's Invert tick follows without re-emitting.
+    # The two visible logo inspectors edit the same settings without re-emitting.
+    win.logo_workspace.refresh()
+    win.logo_workspace._canvas_selection({'A'})
     win.preview.logo_bar.invert.setChecked(True)
     win.preview.logo_bar.scale.setValue(150)
     win._debounce.stop()
     assert p.logo_settings['A']['invert'] is True and p.logo_settings['A']['scale'] == 1.5
-    assert win.output_panel._invert_boxes['A'].isChecked()
-    win.output_panel._invert_boxes['A'].setChecked(False)
+    assert win.logo_workspace.inspector.invert.isChecked()
+    win.logo_workspace.inspector.invert.setChecked(False)
     win._debounce.stop()
     assert p.logo_settings['A']['invert'] is False and not win.preview.logo_bar.invert.isChecked()
 
