@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 
 from .. import arrangements, ingest
 from .arrangement_table import ArrangementTable
-from .widgets import _spin, panel_expand_icon, resettable, default_look
+from .widgets import _spin, panel_expand_icon, resettable, default_look, FontPicker
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
@@ -27,9 +27,12 @@ LAYOUT_LABELS = {
     'center_name': 'Centered credit name',
     'legal': 'Legal text',
     'thanks': 'Special thanks',
+    'names_left': 'Names only — left aligned',
+    'names_center': 'Names only — centered',
+    'names_right': 'Names only — right aligned',
 }
 LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles / names (two columns)', 'list': 'List in columns',
-                'center': 'Centred lines', 'center_name': 'Center credit name', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
+                'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
 UNDO_LIMIT = 200
 
 
@@ -291,13 +294,13 @@ class SheetEditor(QWidget):
 
     def _ranges(self):
         """Every list of {start, end} row ranges that must follow inserted and deleted rows."""
-        return (self.project.arrangements, self.project.overrides, self.project.import_notes, self.project.music_blocks, self.project.hidden_rows,
+        return (self.project.arrangements, self.project.overrides, self.project.cell_formats, self.project.import_notes, self.project.music_blocks, self.project.hidden_rows,
                 self.table.change_marks)
 
     def _state(self):
         p = self.project
         return json.dumps([self.rows(), p.arrangements, p.overrides, p.logos, p.logo_settings,
-                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks, p.hidden_rows, p.base_hidden_rows])
+                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks, p.hidden_rows, p.base_hidden_rows, p.cell_formats])
 
     def commit_undo(self):
         """Record a step if anything undoable changed since the last one."""
@@ -328,11 +331,12 @@ class SheetEditor(QWidget):
             self._restore(self._redo.pop())
 
     def _restore(self, state):
-        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks, hidden_rows, base_hidden_rows = json.loads(state)
+        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks, hidden_rows, base_hidden_rows, cell_formats = json.loads(state)
         current = (self.table.currentRow(), self.table.currentColumn())
         p = self.project
         p.arrangements[:] = arrangements_
         p.overrides[:] = overrides
+        p.cell_formats[:] = cell_formats
         p.music_blocks[:] = music_blocks
         p.hidden_rows[:] = hidden_rows
         p.base_hidden_rows[:] = base_hidden_rows
@@ -768,6 +772,24 @@ class SheetEditor(QWidget):
                 continue
             action=menu.addAction(label,lambda checked=False,k=kind:self._apply_layout_to_selection(k))
             action.setCheckable(True);action.setData(kind)
+        names = menu.addMenu('Names only / alignment')
+        for alignment, label in [('left', 'Left'), ('center', 'Center'), ('right', 'Right')]:
+            kind = 'names_' + alignment
+            action = names.addAction(label, lambda checked=False, k=kind: self._apply_layout_to_selection(k))
+            action.setCheckable(True); action.setData(kind)
+            action.setToolTip('Treat each populated cell as a name, using the shared name font, size and line spacing')
+        formatting = menu.addMenu('Text formatting')
+        formatting.addAction('Format selected cells…', self.format_dialog)
+        bold = formatting.addAction('Bold selected cells')
+        bold.setCheckable(True)
+        bold.triggered.connect(lambda checked=False: self.apply_bold(checked))
+        formatting.addAction('Use section default', lambda: self.apply_cell_format({}, reset=True))
+        def update_formatting():
+            cells = [(i.row(), i.column()) for i in self.table.selectedIndexes() if i.data()]
+            bold.setChecked(bool(cells) and all(any(f['start'] <= row <= f['end'] and f['column'] == column
+                                                    and f.get('bold') for f in self.project.cell_formats)
+                                                for row, column in cells))
+        formatting.aboutToShow.connect(update_formatting)
         menu.addSeparator()
         music=menu.addAction('Music…',self.music_dialog)
         music.setCheckable(True);music.setData('music')
@@ -783,10 +805,135 @@ class SheetEditor(QWidget):
             logo=0<=row<len(data) and not data[row][2] and ingest.logo_labels(data[row][0] or data[row][1])
             music=any(item['start']<=row<=item['end'] for item in self.project.music_blocks)
             kind='logo' if logo else current['kind'] if current else 'music' if music else 'auto'
-            for action in menu.actions()+advanced.actions():
+            if kind == 'center_name':
+                kind = 'names_center'
+            for action in menu.actions()+advanced.actions()+names.actions():
                 if action.isCheckable():action.setChecked(action.data()==kind)
         menu.aboutToShow.connect(update)
         update()
+
+    def apply_bold(self, enabled=True):
+        from ..text import FontError
+        try:
+            self.apply_cell_format({'bold': True if enabled else None})
+        except FontError as error:
+            QMessageBox.information(self,'Cannot apply bold',str(error))
+
+    def _text_cells(self):
+        cells = {(index.row(), index.column()) for index in self.table.selectedIndexes()}
+        if not cells and self.table.currentRow() >= 0:
+            cells.add((self.table.currentRow(), self.table.currentColumn()))
+        rows = self.rows()
+        return {(row,column) for row,column in cells if rows[row][column] and not ingest.logo_labels(rows[row][column])}
+
+    def apply_cell_format(self, options, *, cells=None, reset=False):
+        from .. import text
+        allowed = {'font','size','leading','tracking','bold','italic','uppercase','alignment'}
+        if set(options) - allowed:
+            raise ValueError('Unknown text formatting option.')
+        for key in ('size','leading'):
+            if options.get(key) is not None and not 1 <= options[key] <= 2000:
+                raise ValueError('Font size and line spacing must be between 1 and 2000 pixels.')
+        if options.get('alignment') not in (None,'left','center','right'):
+            raise ValueError('Choose left, center or right alignment.')
+        cells = self._text_cells() if cells is None else set(cells)
+        rows = self.rows()
+        cells = {(row,col) for row,col in cells if 0<=row<len(rows) and 0<=col<3
+                 and rows[row][col] and not ingest.logo_labels(rows[row][col])}
+        pieces = []
+        existing = {}
+        from ..project import crawl_from_rows
+        style_crawl = crawl_from_rows(self.project,rows)
+        for item in self.project.cell_formats:
+            for row in range(item['start'], item['end'] + 1):
+                if (row, item['column']) in cells:
+                    existing[(row,item['column'])] = dict(item, start=row, end=row)
+                else:
+                    pieces.append(dict(item, start=row, end=row))
+        for row,column in sorted(cells):
+            item = dict(start=row,end=row,column=column) if reset else existing.get((row,column),dict(start=row,end=row,column=column))
+            for key,value in options.items():
+                if value is None:
+                    item.pop(key,None)
+                else:
+                    item[key] = value
+            if len(item)>3:
+                # Resolve the actual font before accepting an override, so missing
+                # bold/italic faces are explained in the dialog instead of failing export.
+                base = self._cell_style(row,column,crawl=style_crawl)
+                text.font_for(text.override_style(base,item))
+                pieces.append(item)
+        self.project.cell_formats[:] = pieces
+        self._changed()
+        self.table.viewport().update()
+
+    def _cell_style(self, row, column, *, crawl=None):
+        from ..project import crawl_from_rows
+        from ..model import Header, ListBlock, Legal, RolePair
+        for block in (crawl if crawl is not None else crawl_from_rows(self.project,self.rows())).blocks():
+            if isinstance(block,ListBlock) and row+1 in [block.name_row(i) for i in range(len(block.names))]:
+                return self.project.look.list
+            if block.row != row+1:
+                continue
+            if isinstance(block,Header):
+                return self.project.look.header if block.level==1 else self.project.look.song
+            if isinstance(block,Legal):
+                return self.project.look.legal
+            if isinstance(block,RolePair):
+                name = block.name_cells is not None or block.center_names or column!=0 or not block.role
+                return self.project.look.styles()[('music_' if block.music else '')+('name' if name else 'role')]
+        return self.project.look.name
+
+    def format_dialog(self, *, cells=None, default_style=None):
+        from ..text import FontError
+        cells = sorted(self._text_cells() if cells is None else cells)
+        if not cells:
+            QMessageBox.information(self,'Select text','Select one or more text cells to format.')
+            return
+        base = default_style or self._cell_style(*cells[0])
+        current = [next((item for item in self.project.cell_formats if item['start']<=row<=item['end'] and item['column']==column),{})
+                   for row,column in cells]
+        dialog=QDialog(self);dialog.setWindowTitle('Format selected cells')
+        layout=QVBoxLayout(dialog)
+        note=QLabel(f'{len(cells)} text cell(s). Checked options override the section style.\n'
+                    'Unchecked options follow the section defaults. Credit text and Google Sheets stay unchanged.')
+        note.setWordWrap(True);layout.addWidget(note)
+        form=QFormLayout(); controls={}
+        font=FontPicker();font.set_value(current[0].get('font',base.font))
+        size=_spin(1,2000,' px');size.setValue(current[0].get('size',base.size))
+        leading=_spin(1,2000,' px');leading.setValue(current[0].get('leading',base.leading))
+        alignment=QComboBox()
+        for label,value in [('Left','left'),('Center','center'),('Right','right')]:alignment.addItem(label,value)
+        alignment.setCurrentIndex(alignment.findData(current[0].get('alignment','center')))
+        for key,label,widget in [('font','Font',font),('size','Font size',size),('leading','Line spacing',leading),('alignment','Alignment',alignment)]:
+            widget.setObjectName('format_' + key)
+            enabled=QCheckBox(label)
+            enabled.setChecked(all(key in item and item[key]==current[0].get(key) for item in current))
+            widget.setEnabled(enabled.isChecked());enabled.toggled.connect(widget.setEnabled)
+            form.addRow(enabled,widget);controls[key]=(enabled,widget)
+        for key,label in [('bold','Bold'),('italic','Italic'),('uppercase','Uppercase')]:
+            value=QComboBox();value.addItem('Use section default',None);value.addItem('On',True);value.addItem('Off',False)
+            value.setObjectName('format_' + key)
+            if all(key in item and item[key]==current[0].get(key) for item in current):
+                value.setCurrentIndex(1 if current[0][key] else 2)
+            form.addRow(label,value);controls[key]=(None,value)
+        layout.addLayout(form)
+        hint=QLabel('Font size scales line spacing automatically unless you override line spacing too. Alignment stays within the credit’s column.')
+        hint.setWordWrap(True);layout.addWidget(hint)
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        reset=buttons.addButton('Use section defaults',QDialogButtonBox.ResetRole)
+        reset.clicked.connect(lambda:(self.apply_cell_format({},cells=cells,reset=True),dialog.accept()))
+        def accept():
+            options={}
+            for key,(enabled,widget) in controls.items():
+                options[key] = (widget.value() if key in ('font','size','leading') else widget.currentData()) if enabled is None or enabled.isChecked() else None
+            try:
+                self.apply_cell_format(options,cells=cells)
+            except (ValueError,FontError) as error:
+                QMessageBox.information(dialog,'Cannot apply formatting',str(error));return
+            dialog.accept()
+        buttons.accepted.connect(accept);buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons);dialog.exec()
 
     def _build_context_menu(self):
         menu=QMenu(self)
@@ -824,6 +971,8 @@ class SheetEditor(QWidget):
         override = self.override_at(row)
         if override:
             tips.append(f"Layout: {LAYOUT_LABELS[override['kind']]}")
+        if any(item['start'] <= row <= item['end'] and item['column'] == col for item in self.project.cell_formats):
+            tips.append('Manual styling — edit or reset under Layout → Text formatting')
         mark = next((m for m in self.table.change_marks if m['start'] <= row <= m['end']), None)
         if mark:
             tips.append('Changed by the last sheet update' + (f" — was: {mark['was']}" if mark.get('was') else ''))
@@ -875,12 +1024,16 @@ class SheetEditor(QWidget):
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if not occupied or any(sum(bool(value) for value in row)!=1 for row in occupied):
                 raise ValueError('Select a name-only row with just one populated cell. Role/name pairs stay together.')
+        if kind.startswith('names_'):
+            occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
+            if not occupied or any(ingest.logo_labels(value) for row in occupied for value in row if value):
+                raise ValueError('Select cells containing names. Logo rows keep their own layout.')
         if kind == 'roles':
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if (not occupied or any(ingest.logo_labels(b or c) or (c and d)
                     or (not b and c) for b,c,d in occupied)):
                 raise ValueError('Select role/name rows: roles in column B, names in C or D. Keep section headings and logo rows outside this selection.')
-        if kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
+        if not kind.startswith('names_') and kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
                                       for r in selected if r < len(rows)):
             raise ValueError('Layout overrides apply to rows with only column B filled '
                              '(roles or names with nothing in C or D).')
@@ -1085,6 +1238,14 @@ class SheetEditor(QWidget):
         form.addRow('Name order',flow)
         form.addRow('Maximum section width',resettable(width,lambda:55,'thanks section width'))
         form.addRow('Space between columns',resettable(gap,lambda:default_look(self.project).list_column_gap,'thanks column gap'))
+        heading_format=QPushButton('Heading font and styling…')
+        heading_format.setEnabled(title.isChecked());title.toggled.connect(heading_format.setEnabled)
+        def format_heading():
+            values=self.rows()[selected[0]]
+            column=next((column for column,value in enumerate(values) if value),1)
+            self.format_dialog(cells=[(selected[0],column)],default_style=self.project.look.header)
+        heading_format.clicked.connect(format_heading)
+        form.addRow('Heading appearance',heading_format)
         layout.addLayout(form)
         buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         def accept():
@@ -1340,7 +1501,7 @@ class SheetEditor(QWidget):
         from .. import changes
         rows, shifts, marks = changes.apply(self.rows(), accepted)
         self.table.change_marks[:] = []
-        for ranges in (self.project.arrangements, self.project.overrides, self.project.import_notes, self.project.music_blocks):
+        for ranges in (self.project.arrangements, self.project.overrides, self.project.cell_formats, self.project.import_notes, self.project.music_blocks):
             changes.replay(ranges, shifts)
         # What each marked row used to say, for its tooltip.
         ordered = sorted(accepted, key=lambda c: (c.start, c.end))

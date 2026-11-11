@@ -81,6 +81,7 @@ class Project:
     # Layout overrides for Col-B-only rows: {start, end, kind} with zero-based
     # inclusive rows and kind in ingest.LAYOUT_KINDS (roles | list | center).
     overrides: List[dict] = field(default_factory=list)
+    cell_formats: List[dict] = field(default_factory=list)  # per-cell text style and alignment overrides
     music_blocks: List[dict] = field(default_factory=list)  # explicit song ranges; text stays in its source cells
 
     # Findings the user has looked at and accepted, by lint.Finding.key.
@@ -102,7 +103,7 @@ class Project:
 
     _SIMPLE = ("source", "source_url", "google_sheet_master", "sheet", "columns", "start_row", "list_columns", "max_panel",
                "output_dir", "basename", "timestamp_output", "version_output", "codec", "alpha", "write_fusion", "write_report", "fmt", "logos", "logo_settings", "rows", "arrangements",
-               "overrides", "music_blocks", "dismissed", "import_notes", "base_rows", "hidden_rows", "base_hidden_rows", "snapshots", "import_history")
+               "overrides", "cell_formats", "music_blocks", "dismissed", "import_notes", "base_rows", "hidden_rows", "base_hidden_rows", "snapshots", "import_history")
 
     def record_import(self, rows, action="Imported", applied=0, skipped=0, deduplicate=False):
         """Keep source provenance; opening a saved project is not a new import."""
@@ -137,6 +138,12 @@ class Project:
             for item in self.overrides:
                 if item.get('kind') == 'thanks' and 'column_gap' in item:
                     item['column_gap'] = int(round(item['column_gap'] * factor))
+            for item in self.cell_formats:
+                for key in ('size','leading'):
+                    if key in item:
+                        item[key] = max(1,round(item[key]*factor))
+                if 'tracking' in item:
+                    item['tracking'] = round(item['tracking']*factor,2)
             self.timing.speed = max(1, int(round(self.timing.speed * factor)))
         return factor
 
@@ -188,6 +195,9 @@ class Project:
         state["source"] = mapper(state.get("source", ""), base)
         state["output_dir"] = mapper(state.get("output_dir", ""), base)
         state["logos"] = {label: mapper(file, base) for label, file in state.get("logos", {}).items()}
+        for item in state.get('cell_formats', []):
+            if Path(item.get('font','')).suffix.lower() in ('.ttf','.otf','.ttc'):
+                item['font'] = mapper(item['font'],base)
 
     # ---- files -------------------------------------------------------------
     #
@@ -212,6 +222,9 @@ class Project:
         p.source = _absolute(p.source, base)
         p.output_dir = _absolute(p.output_dir, base)
         p.logos = {label: _absolute(file, base) for label, file in p.logos.items()}
+        for item in p.cell_formats:
+            if Path(item.get('font','')).suffix.lower() in ('.ttf','.otf','.ttc'):
+                item['font'] = _absolute(item['font'],base)
         for snapshot in p.snapshots:
             cls._map_paths(snapshot["state"], base, _absolute)
         p.load_notes = p._repair(base)
@@ -308,10 +321,16 @@ class Project:
 
         self.logos = {label: bring(file) for label, file in self.logos.items()}
         self.source = bring(self.source)
+        for item in self.cell_formats:
+            if 'font' in item:
+                item['font'] = bring(item['font'])
         for snapshot in self.snapshots:
             state = snapshot["state"]
             state["source"] = bring(state.get("source", ""))
             state["logos"] = {label: bring(file) for label, file in state.get("logos", {}).items()}
+            for item in state.get('cell_formats', []):
+                if 'font' in item:
+                    item['font'] = bring(item['font'])
         return copied
 
 
@@ -339,6 +358,8 @@ def crawl_from_rows(project: Project, rows) -> Crawl:
                          hidden_rows=ingest.hidden_indices(project.hidden_rows),
                          thanks_sections=[item for item in project.overrides if item["kind"]=="thanks"])
     crawl.arrangements = copy.deepcopy(project.arrangements)
+    crawl.cell_formats = copy.deepcopy(project.cell_formats)
+    crawl.source_rows = [list(row) for row in rows]
     for lg in crawl.logos():
         if lg.label in project.logos:
             lg.path = project.logos[lg.label]

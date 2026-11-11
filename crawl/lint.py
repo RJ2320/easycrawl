@@ -17,6 +17,8 @@ from difflib import SequenceMatcher
 from typing import Iterable, List
 
 from .model import Crawl, Header, ListBlock, RolePair
+from . import text
+from .look import TextStyle
 
 PLACEHOLDER_RE = re.compile(
     r"^(name\s*\d*|title\s*\d*|role\s*\d*|\(clear field\)|tbd|tbc|xxx+|lorem.*)$"
@@ -67,6 +69,7 @@ def _placeholders(crawl: Crawl) -> List[Finding]:
         elif isinstance(b, ListBlock):
             texts = [(n, b.name_row(i), "list") for i, n in enumerate(b.names)]
         for value, row, target in texts:
+            value = ''.join(part for _, part in text.runs(TextStyle(), value))
             if value and PLACEHOLDER_RE.search(value):
                 out.append(Finding("placeholder", "error", row, f"template leftover: {value!r}", target,
                                    f"placeholder|{_norm(value)}"))
@@ -80,7 +83,7 @@ def _empties(crawl: Crawl) -> List[Finding]:
             if b.role and not b.names and not b.names_pending:
                 out.append(Finding("empty", "error", b.row, f"{b.role!r} has no names", "name",
                                    f"empty|{_norm(b.role)}"))
-            elif b.names and not b.role and not b.center_names:
+            elif b.names and not b.role and not b.center_names and b.name_cells is None:
                 out.append(Finding("empty", "info", b.row, f"names without a role: {', '.join(b.names)}", "role",
                                    "no-role|" + "|".join(_norm(n) for n in b.names)))
     return out
@@ -190,4 +193,5 @@ def _logos(crawl: Crawl) -> List[Finding]:
 
 
 def _norm(s: str) -> str:
+    s = ''.join(part for _, part in text.runs(TextStyle(), s))
     return re.sub(r"\s+", " ", s.strip().lower())

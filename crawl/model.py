@@ -28,6 +28,9 @@ class RolePair:
     names_pending: bool = False   # set by a "roles" layout override: no names yet, don't flag it
     center_names: bool = False  # centered exception retaining credit-name typography
     two_column: bool = False  # explicit role/name alignment takes precedence over music layout
+    name_cells: Optional[List[str]] = None  # names-only cells sharing one baseline
+    name_alignment: str = "center"
+    name_columns: Optional[List[int]] = None
 
 
 @dataclass
@@ -94,6 +97,8 @@ class Crawl:
     groups: List[Group] = field(default_factory=list)
     source: str = ""
     arrangements: List[dict] = field(default_factory=list)
+    cell_formats: List[dict] = field(default_factory=list)
+    source_rows: Optional[List[List[str]]] = None
 
     def blocks(self):
         for g in self.groups:

@@ -1310,6 +1310,7 @@ class MainWindow(QMainWindow):
         self.project.rows = [["", "", ""] for _ in range(40)]
         self.project.arrangements[:] = []
         self.project.overrides[:] = []
+        self.project.cell_formats[:] = []
         self.project.music_blocks[:] = []
         self.project.import_notes[:] = []
         self.project.base_rows = None
@@ -1343,6 +1344,7 @@ class MainWindow(QMainWindow):
             self.project.rows = None
             self.project.arrangements[:] = []
             self.project.overrides[:] = []
+            self.project.cell_formats[:] = []
             self.project.music_blocks[:] = []
         if fresh:
             # What the client sent, kept so a revised sheet can be merged in later.

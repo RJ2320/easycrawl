@@ -40,9 +40,9 @@ def render_panel(L: Layout, look: Look, top: int, bottom: int, scale: float = 1.
 
     # Glyphs reach above and below their baseline; two font sizes covers any
     # ascender/descender plus tracking artefacts.
-    margin = 2 * max(s.size for s in styles.values())
+    margin = 2 * max([st.size for st in styles.values()] + [line.text_style.size for line in L.lines if line.text_style])
     for ln in L.lines_in(top, bottom, margin):
-        st = styles[ln.style]
+        st = ln.text_style or styles[ln.style]
         font = text.font_for(st, s)
         x = ln.x * s
         y = (ln.y - top) * s

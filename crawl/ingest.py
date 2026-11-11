@@ -347,7 +347,8 @@ def _xlsx_rows(ws) -> List[List[str]]:
 #   roles    each row is a role in the left column, names to come
 #   list     set in list columns even if the run is short
 #   center   one centred line per row
-LAYOUT_KINDS = ("roles", "list", "center", "center_name", "legal", "thanks")
+LAYOUT_KINDS = ("roles", "list", "center", "center_name", "legal", "thanks",
+                "names_left", "names_center", "names_right")
 
 
 def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_before=(),
@@ -425,6 +426,14 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
 
         if i > 0 and i - 1 in explicit_music and i not in explicit_music:
             in_music, in_song = False, False
+        if kinds.get(i, '').startswith('names_'):
+            cells = [b, d] if d and not c and b else [value for value in (b,c,d) if value]
+            group.blocks.append(RolePair(role='', names=[name for value in cells for name in _split_names(value)],
+                                         row=rownum, name_cells=cells,
+                                         name_columns=[column for column,value in enumerate((b,c,d)) if value],
+                                         name_alignment=kinds[i].removeprefix('names_')))
+            i += 1
+            continue
         if kinds.get(i) == 'roles' and (b or d) and not logo_labels(b or c):
             names = _split_names(d or c)
             group.blocks.append(RolePair(role=b, names=names, row=rownum,
@@ -447,7 +456,9 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
                 continue
             names=[]; source_rows=[]; source_columns=[]
             flow=section.get('flow','across')
-            while i <= section['end'] and i < n and any(rows[i]) and kinds.get(i) != 'legal':
+            while (i <= section['end'] and i < n and any(rows[i])
+                   and kinds.get(i) not in ('legal', 'roles', 'center_name')
+                   and not kinds.get(i, '').startswith('names_')):
                 if flow == 'sheet':
                     for column,value in enumerate(rows[i]):
                         if value:
@@ -468,7 +479,7 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
             else:
                 role = b
                 names = "\n".join(value for value in (c, d) if value)
-                if b and not names and b.lower() not in {'written by', 'performed by', 'produced by', 'courtesy of', 'published by'}:
+                if b and not names and b.replace('*','').lower() not in {'written by', 'performed by', 'produced by', 'courtesy of', 'published by'}:
                     role, names = '', b
                 group.blocks.append(RolePair(role=role, names=_split_names(names), row=rownum, music=True))
             i += 1
@@ -480,8 +491,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
             i += 1
             continue
 
-        plain_b = re.sub(r"\*([^*\n]+)\*", r"\1", b)
-        plain_c = re.sub(r"\*([^*\n]+)\*", r"\1", c)
+        plain_b = b.replace('*', '')
+        plain_c = c.replace('*', '')
         # Music uses B for the label and C (or D) for names. C-only rows
         # within a song can be continuing writers, not new section headings.
         if plain_c.upper() == "MUSIC" and not b and not d:
@@ -575,7 +586,7 @@ def _is_caps(s: str) -> bool:
 
 
 def _looks_legal(b: str) -> bool:
-    return len(b) >= LEGAL_MIN_CHARS or bool(LEGAL_RE.search(b))
+    return len(b.replace('*', '')) >= LEGAL_MIN_CHARS or bool(LEGAL_RE.search(b))
 
 
 def _b_only_run(rows: Sequence[Row], start: int, break_before=(), kinds: Optional[dict] = None) -> int:

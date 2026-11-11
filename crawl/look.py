@@ -21,6 +21,7 @@ class TextStyle:
     uppercase: bool = False
     color: Tuple[float, float, float] = (1.0, 1.0, 1.0)  # 0..1 linear-ish RGB
     italic: bool = False
+    bold: bool = False
 
 
 @dataclass

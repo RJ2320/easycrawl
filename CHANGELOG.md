@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.15
+
+- Add left, center and right alignment for names-only rows, retaining shared name typography for paired names.
+- Add per-cell font, size, line spacing, alignment, bold, italic and uppercase overrides without changing source-sheet text or shared Look settings.
+- Add direct heading font and styling controls to the Special thanks dialog.
+- Apply manual styling to preview, exports, wrapping and layout warnings, with a reset to section defaults.
+- Preserve formatting through project saving, undo, row edits and source-sheet updates.
+
 ## 0.3.14
 
 - Remove unused hidden export and legacy logo-slot controls from Export settings.

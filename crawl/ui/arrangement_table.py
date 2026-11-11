@@ -79,6 +79,24 @@ class ArrangementDelegate(QStyledItemDelegate):
             option.font.setWeight(QFont.DemiBold)          # section headers and song titles
         elif index.column() == 0 and text.startswith("[") and ingest.logo_labels(text):
             option.palette.setColor(option.palette.ColorRole.Text, QColor(theme.ACCENT))
+        override = self.table().override_at(index.row())
+        if override and override['kind'].startswith('names_'):
+            option.font.setWeight(QFont.Normal)
+            option.displayAlignment = {'names_left': Qt.AlignLeft, 'names_center': Qt.AlignHCenter,
+                                       'names_right': Qt.AlignRight}[override['kind']] | Qt.AlignVCenter
+        manual = next((item for item in self.table().project.cell_formats
+                       if item['start'] <= index.row() <= item['end'] and item['column'] == index.column()),{})
+        if 'font' in manual:
+            from .. import fonts
+            face = fonts.resolve(manual['font']) or fonts.resolve_default(manual['font'])
+            if face:
+                option.font.setFamily(face.family)
+        if 'bold' in manual:
+            option.font.setWeight(QFont.Bold if manual['bold'] else QFont.Normal)
+        if 'italic' in manual:
+            option.font.setItalic(manual['italic'])
+        if 'alignment' in manual:
+            option.displayAlignment = {'left':Qt.AlignLeft,'center':Qt.AlignHCenter,'right':Qt.AlignRight}[manual['alignment']] | Qt.AlignVCenter
 
     def paint(self, painter, option, index):
         table = self.table()

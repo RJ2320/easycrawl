@@ -38,7 +38,59 @@ def _load(spec: str, size: int) -> ImageFont.FreeTypeFont:
 
 
 def font_for(style: TextStyle, scale: float = 1.0) -> ImageFont.FreeTypeFont:
-    return _load(italic_spec(style.font) if style.italic else style.font, max(1, int(round(style.size * scale))))
+    spec = bold_spec(style.font) if style.bold else style.font
+    return _load(italic_spec(spec) if style.italic else spec, max(1, int(round(style.size * scale))))
+
+
+@lru_cache(maxsize=128)
+def bold_spec(spec: str) -> str:
+    face = fonts.resolve(spec) or fonts.resolve_default(spec)
+    if face is None:
+        raise FontError(f"font not found: {spec!r}")
+    if any(word in face.style.lower() for word in ('bold', 'black', 'heavy')):
+        return spec
+    candidates = [f for f in fonts.all_faces() if f.family == face.family
+                  and 'bold' in f.style.lower()]
+    if not candidates:
+        raise FontError(f"No bold face for {face.family}. Choose a font with a bold style.")
+    italic = any(word in face.style.lower() for word in ('italic', 'oblique'))
+    candidates.sort(key=lambda f: (any(word in f.style.lower() for word in ('italic', 'oblique')) != italic,
+                                   f.style.lower() != 'bold', len(f.style)))
+    return f"{candidates[0].family}:{candidates[0].style}"
+
+
+@lru_cache(maxsize=128)
+def face_variant(spec: str, bold=None, italic=None) -> str:
+    """Remove explicit weight/slant overrides using a real family face."""
+    face = fonts.resolve(spec) or fonts.resolve_default(spec)
+    if face is None:
+        raise FontError(f"font not found: {spec!r}")
+    def matches(candidate):
+        weight = any(word in candidate.style.lower() for word in ('bold','black','heavy'))
+        slant = any(word in candidate.style.lower() for word in ('italic','oblique'))
+        return (bold is None or weight == bold) and (italic is None or slant == italic)
+    if matches(face):
+        return spec
+    candidates = [candidate for candidate in fonts.all_faces() if candidate.family == face.family and matches(candidate)]
+    if not candidates:
+        raise FontError(f'No matching regular/upright face for {face.family}. Choose a different font style.')
+    def base(value):
+        return re.sub(r'bold|black|heavy|italic|oblique|regular|roman|normal|\s','',value.lower())
+    candidates.sort(key=lambda candidate:(base(candidate.style)!=base(face.style),len(candidate.style)))
+    return f'{candidates[0].family}:{candidates[0].style}'
+
+
+def override_style(style: TextStyle, options) -> TextStyle:
+    values = {key: options[key] for key in ('font','size','leading','tracking','bold','italic','uppercase') if key in options}
+    if not values:
+        return style
+    if 'size' in values and 'leading' not in values:
+        values['leading'] = max(1,round(style.leading * values['size'] / style.size))
+    if values.get('bold') is False or values.get('italic') is False:
+        values['font'] = face_variant(values.get('font',style.font),
+                                      bold=False if values.get('bold') is False else None,
+                                      italic=False if values.get('italic') is False else None)
+    return replace(style, **values)
 
 
 @lru_cache(maxsize=128)
@@ -59,12 +111,17 @@ def italic_spec(spec: str) -> str:
 
 
 def runs(style: TextStyle, value: str):
-    """Inline *italics*; unmatched asterisks remain literal."""
+    """Inline *italics* and **bold**; unmatched asterisks remain literal."""
     start = 0
-    for match in re.finditer(r"\*([^*\n]+)\*", value):
+    for match in re.finditer(r"\*\*\*([^*\n]+)\*\*\*|\*\*([^\n]+?)\*\*|\*([^*\n]+)\*", value):
         if match.start() > start:
             yield style, value[start:match.start()]
-        yield replace(style, italic=True), match.group(1)
+        if match.group(1) is not None:
+            yield replace(style, bold=True, italic=True), match.group(1)
+        elif match.group(2) is not None:
+            yield from runs(replace(style, bold=True), match.group(2))
+        else:
+            yield replace(style, italic=True), match.group(3)
         start = match.end()
     if start < len(value):
         yield style, value[start:]
@@ -116,7 +173,8 @@ def wrap(style: TextStyle, s: str, max_width: float, scale: float = 1.0) -> List
                         words.append(current)
                         current = ""
                 else:
-                    current += f"*{token}*" if st.italic and not style.italic else token
+                    marker = ('**' if st.bold and not style.bold else '') + ('*' if st.italic and not style.italic else '')
+                    current += f"{marker}{token}{marker}" if marker else token
         if current:
             words.append(current)
         if not words:

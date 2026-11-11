@@ -500,10 +500,24 @@ for preview selection, warnings and revision merges; hidden status saves with th
 project and follows local row edits and undo. Older saved projects can recover hidden
 status from a matching cached workbook without changing their credit text.
 
-**Layout → Center credit name** centers a selected name-only row (column D), keeping
-the normal credit-name font, size and line spacing. Use it for a final standalone
-name in a cast/family list. Role/name pairs are protected; **Automatic** restores
-normal alignment. The choice saves with the project and supports undo.
+**Layout → Names only / alignment → Left, Center or Right** treats each populated
+cell in the selected rows as a name. Use it for paired names in B/C or B/D, or a
+standalone name. Both columns inherit the shared name font, size and line spacing;
+each name aligns within its column, and multiline names wrap independently.
+**Layout → Automatic** restores the usual role/name interpretation.
+
+**Layout → Text formatting → Bold selected cells** adds a bold override to the
+selected cells. **Use section default** removes that override. These choices save
+with the project, support undo, and follow inserted rows and sheet updates. Bold
+uses the font family's bold face and does not edit the Google Sheet or saved credit
+text. The preview and exports include the override.
+
+**Layout → Text formatting → Format selected cells…** also overrides font, size,
+line spacing, left/center/right alignment, italic and uppercase for selected text
+cells. Check an option to override it; unchecked options inherit the section style.
+Size changes scale line spacing unless line spacing is overridden too. These local
+settings do not change other headings or names. Use **Heading font and styling…**
+in the Special thanks dialog to format just that section's heading.
 
 **File → Google Sheet is master for credit text** is enabled by default. Refresh
 compares the full current project text against the Google Sheet, including previously

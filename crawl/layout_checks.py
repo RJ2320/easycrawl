@@ -23,7 +23,7 @@ def regions(layout, look):
     result = []
     styles = look.styles()
     for line in layout.lines:
-        style = styles[line.style]
+        style = line.text_style or styles[line.style]
         width = text.width(style, line.text)
         x = line.x - (width / 2 if line.anchor[0] == 'm' else width if line.anchor[0] == 'r' else 0)
         boxes = []
