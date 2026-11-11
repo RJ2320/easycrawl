@@ -34,6 +34,7 @@ class Line:
     row: int = 0
     target: str = ''
     text_style: Optional[TextStyle] = None  # resolved manual override; shared Look stays unchanged
+    ideal_y: Optional[float] = None  # unrounded baseline for spacing / runtime measurement
 
 
 @dataclass
@@ -52,6 +53,7 @@ class LogoItem:
     white: float = 1.0
     mode: str = "original"
     row: int = 0
+    ideal_y: Optional[float] = None
 
 
 @dataclass
@@ -84,6 +86,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
     asc = {k: text.metrics(s)[0] for k, s in styles.items()}
     desc = {k: text.metrics(s)[1] for k, s in styles.items()}
     L = Layout(width=look.width, content_height=0)
+    units=[]
 
     pen = 0.0           # top of the next line's box
     bottom = 0          # lowest ink so far
@@ -134,7 +137,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
         L.row_positions.setdefault(row, baseline)
         target = "header" if isinstance(b, Header) else "role" if isinstance(b, Legal) else style.removeprefix("music_")
         L.lines.append(Line(text.display_text(st, s), style, x, baseline, anchor, row, target,
-                            st if st != base_styles[style] else None))
+                            st if st != base_styles[style] else None,y+ascent))
         bottom = max(bottom, baseline + descent)
 
     first_group = True
@@ -146,6 +149,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
         g_top = int(math.floor(pen))
 
         for b in g.blocks:
+            line_start,logo_start=len(L.lines),len(L.logos)
             if formats:
                 styles = {key: styled(key, b.row) for key in base_styles}
                 asc = {key: text.metrics(st)[0] for key, st in styles.items()}
@@ -193,12 +197,14 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                                 column=(b.name_columns or list(range(count)))[column],
                                 bounds=(cell_left,cell_right))
                     pen += max(map(len, wrapped)) * lead
+                    units.append(_spacing_unit(L,[b],line_start,logo_start,len(L.groups)))
                     continue
                 if b.center_names:
                     for name in b.names:
                         for line in lines_for('name',name,column_width or look.list_width,b.row):
                             put(line, 'name', look.center_x, 'ms', pen)
                             pen += styles['name'].leading * flex
+                    units.append(_spacing_unit(L,[b],line_start,logo_start,len(L.groups)))
                     continue
                 if b.music or (column_width and not b.two_column):
                     role_style, name_style = ("music_role", "music_name") if b.music else ("role", "name")
@@ -235,6 +241,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                             if line:
                                 put(line, name_style, left + lw + sp, "ls", pen)
                             pen += styles[name_style].leading * flex
+                    units.append(_spacing_unit(L,[b],line_start,logo_start,len(L.groups)))
                     continue
                 role_lines=lines_for('role',b.role,max(100,((column_width or look.list_width)-look.gutter)/2),b.row,default=False) if b.role else []
                 name_lines=[line for name in b.names for line in lines_for('name',name,max(100,((column_width or look.list_width)-look.gutter)/2),b.row,default=False)]
@@ -288,7 +295,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     item_y = y + (h - hh) // 2 + lg.dy
                     L.logos.append(LogoItem(lg.label, lg.path, int(round(x)) + lg.dx, item_y, w, hh, lg.invert,
                                             logos.ink_box(lg.path, lg.invert, lg.black), lg.dx, lg.dy,
-                                            lg.black, lg.white, lg.mode, b.row))
+                                            lg.black, lg.white, lg.mode, b.row,pen+(h-hh)//2+lg.dy))
                     bottom = max(bottom, item_y + hh)
                     x += w + logo_gap
                 bottom = max(bottom, y + h)
@@ -299,12 +306,118 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     put(ln, "legal", 0 if column_width and alignment == "left" else look.center_x,
                         "ls" if column_width and alignment == "left" else "ms", pen)
                     pen += styles["legal"].leading * flex
+            units.append(_spacing_unit(L,[b],line_start,logo_start,len(L.groups)))
 
         L.groups.append((g_top, max(bottom, int(math.ceil(pen)))))
 
     L.content_height = bottom
     L.target_height = bottom
+    _normalize_logo_spacing(L,look,flex,units)
     return L
+
+
+def _spacing_unit(L,blocks,line_start,logo_start,group,starts_logo=None,ends_logo=None):
+    visible=[block for block in blocks if not isinstance(block,Spacer)]
+    leading=[];trailing=[]
+    for block in blocks:
+        if not isinstance(block,Spacer):break
+        leading.append(block.row)
+    for block in reversed(blocks):
+        if not isinstance(block,Spacer):break
+        trailing.append(block.row)
+    return dict(lines=(line_start,len(L.lines)),logos=(logo_start,len(L.logos)),group=group,
+                starts_logo=bool(visible and isinstance(visible[0],LogoRow)) if starts_logo is None else starts_logo,
+                ends_logo=bool(visible and isinstance(visible[-1],LogoRow)) if ends_logo is None else ends_logo,
+                leading=leading,trailing=list(reversed(trailing)),spaces=[b.row for b in blocks if isinstance(b,Spacer)])
+
+
+def _vertical_bounds(lines,artwork,look,ideal=False,natural=False):
+    tops=[];bottoms=[];styles=look.styles()
+    for line in lines:
+        y=line.ideal_y if ideal and line.ideal_y is not None else line.y
+        for style,value in text.runs(line.text_style or styles[line.style],line.text):
+            a,b,c,d=text.font_for(style).getbbox(value,anchor='ls')
+            if c>a and d>b:
+                tops.append(y+b);bottoms.append(y+d)
+    for logo in artwork:
+        y=logo.ideal_y if ideal and logo.ideal_y is not None else logo.y
+        y-=logo.dy if natural else 0
+        tops.append(y);bottoms.append(y+logo.h)
+    return (min(tops),max(bottoms)) if tops else None
+
+
+def _normalize_logo_spacing(L,look,flex,units):
+    """Logo boundaries own one visible gap; only explicit spacers add to it.
+
+    Keep ideal coordinates continuous until the final pixel snap, so many logo
+    boundaries do not accumulate rounding errors in the runtime solver.
+    Manual Y nudges remain deliberate offsets inside the automatic layout.
+    """
+    if not L.logos:return
+    gap=look.logo_gap*flex;space=look.group_gap*flex
+    offset=0.0;previous_bottom=None;previous_logo=False;previous_group=None
+    pending=[];group_offsets={};tight_start=set();tight_end=set();positions={}
+    group_boxes={}
+    def place_spaces(rows,start):
+        for index,row in enumerate(rows):positions[row]=round(start+index*space)
+    for unit in units:
+        a,b=unit['lines'];c,d=unit['logos'];lines=L.lines[a:b];art=L.logos[c:d]
+        group=unit['group'];bounds=_vertical_bounds(lines,art,look,ideal=True,natural=True)
+        group_offsets.setdefault(group,[offset,offset])
+        if bounds:
+            if unit['starts_logo'] or previous_logo:
+                base=(previous_bottom if previous_bottom is not None else 0)+gap
+                target=base+(len(pending)+len(unit['leading']))*space
+                offset+=target-(bounds[0]+offset)
+                place_spaces(pending+unit['leading'],base)
+                if previous_group is not None and previous_group!=group:
+                    for index in range(previous_group,group):tight_end.add(index)
+                    for index in range(previous_group+1,group+1):tight_start.add(index)
+            for index in range(a,b):
+                line=L.lines[index];ideal=(line.ideal_y if line.ideal_y is not None else line.y)+offset
+                L.lines[index]=replace(line,y=round(ideal),ideal_y=ideal)
+            for index in range(c,d):
+                logo=L.logos[index];ideal=(logo.ideal_y if logo.ideal_y is not None else logo.y)+offset
+                L.logos[index]=replace(logo,y=round(ideal),ideal_y=ideal)
+            for row in unit['spaces']:
+                if row not in unit['leading']:
+                    positions[row]=round(L.row_positions.get(row,0)+offset)
+            previous_bottom=bounds[1]+offset
+            previous_logo=unit['ends_logo'];previous_group=group
+            pending=list(unit['trailing'])
+        else:
+            for row in unit['spaces']:positions[row]=round(L.row_positions.get(row,0)+offset)
+            pending.extend(unit['spaces'])
+        group_offsets[group][1]=offset
+    if previous_logo and pending:
+        place_spaces(pending,previous_bottom+gap)
+    # Derive navigation and panel bounds from the placed geometry, not stale
+    # section padding that the logo boundary has replaced.
+    for unit in units:
+        a,b=unit['lines'];c,d=unit['logos'];lines=L.lines[a:b];art=L.logos[c:d]
+        for line in lines:positions[line.row]=min(positions.get(line.row,line.y),line.y)
+        for logo in art:
+            y=round((logo.ideal_y if logo.ideal_y is not None else logo.y)-logo.dy-gap)
+            positions[logo.row]=min(positions.get(logo.row,y),y)
+        bounds=_vertical_bounds(lines,art,look)
+        values=[] if bounds is None else [bounds[0],bounds[1]]
+        for row in unit['spaces']:
+            if row in positions:values.extend((positions[row],positions[row]+space))
+        if values:
+            group_boxes.setdefault(unit['group'],[]).extend(values)
+    L.row_positions.update(positions)
+    for index,(top,bottom) in enumerate(L.groups):
+        first,last=group_offsets.get(index,(0,0));box=group_boxes.get(index,[])
+        top=min([top+first]+box);bottom=max([bottom+last]+box)
+        if box and index in tight_start:top=min(box)
+        if box and index in tight_end:bottom=max(box)
+        L.groups[index]=(math.floor(top),math.ceil(bottom))
+    styles=look.styles()
+    ends=[line.y+text.metrics(line.text_style or styles[line.style])[1] for line in L.lines]
+    ends += [logo.y+logo.h for logo in L.logos]
+    ends += [positions[row]+space for unit in units for row in unit['spaces'] if row in positions]
+    if previous_logo:ends.append(previous_bottom+gap+len(pending)*space)
+    L.content_height=math.ceil(max(ends,default=0));L.target_height=L.content_height
 
 
 def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
@@ -316,13 +429,16 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
         if index and arrangements[index - 1]['end'] >= item['start']:
             raise ValueError('Side-by-side arrangements cannot overlap.')
     result = Layout(look.width, 0)
+    units = []
     pen = 0.0
     index = 0
 
     def paste(part, x, y):
-        result.lines.extend(replace(line, x=line.x + x, y=line.y + y) for line in part.lines)
+        result.lines.extend(replace(line, x=line.x + x, y=line.y + y,
+                                    ideal_y=(line.ideal_y if line.ideal_y is not None else line.y)+y) for line in part.lines)
         result.row_positions.update({row: value + y for row, value in part.row_positions.items()})
-        result.logos.extend(replace(logo, x=logo.x + x, y=logo.y + y) for logo in part.logos)
+        result.logos.extend(replace(logo, x=logo.x + x, y=logo.y + y,
+                                    ideal_y=(logo.ideal_y if logo.ideal_y is not None else logo.y)+y) for logo in part.logos)
         result.content_height = max(result.content_height, y + part.content_height)
 
     while index < len(crawl.groups):
@@ -333,11 +449,13 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
         if result.groups:
             pen += gap * flex
         if item is None:
+            line_start,logo_start=len(result.lines),len(result.logos)
             part = layout(Crawl(groups=[group], cell_formats=crawl.cell_formats, source_rows=crawl.source_rows), look, flex)
             y = round(pen)
             paste(part, 0, y)
             pen += max(part.content_height, part.groups[-1][1])
             result.groups.append((y, max(result.content_height, math.ceil(pen))))
+            units.append(_spacing_unit(result,group.blocks,line_start,logo_start,len(result.groups)-1))
             index += 1
             continue
         selected = []
@@ -345,12 +463,17 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
             selected.append(crawl.groups[index])
             index += 1
         if item.get('logo_grid'):
-            if any(not isinstance(block, LogoRow) for group in selected for block in group.blocks):
+            if any(not isinstance(block, (LogoRow,Spacer)) for group in selected for block in group.blocks):
                 raise ValueError('A logo layout can only contain logo rows. Move text outside its range.')
-            artwork = [logo for group in selected for block in group.blocks for logo in block.logos]
+            tokens=[token for group in selected for block in group.blocks
+                    for token in ([block] if isinstance(block,Spacer) else block.logos)]
+            artwork = [token for token in tokens if not isinstance(token,Spacer)]
             order = item.get('logo_order', [])
             artwork.sort(key=lambda logo: order.index(logo.label) if logo.label in order else len(order))
-            selected = [Group([LogoRow([logo], row=logo.row)]) for logo in artwork]
+            ordered=iter(artwork)
+            selected=[Group([token]) if isinstance(token,Spacer) else
+                      Group([LogoRow([logo],row=logo.row)]) for token in tokens
+                      for logo in ([None] if isinstance(token,Spacer) else [next(ordered)])]
         columns = item['columns']
         gutter = item.get('gap', 120)
         full_width = min(look.width * .9, 2 * min(look.center_x, look.width - look.center_x))
@@ -367,12 +490,22 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
             local_look.music_inline_gap = item.get('inline_gap', look.music_inline_gap)
         grid_group_start = len(result.groups)
         grid_top = round(pen)
-        for start in range(0, len(selected), columns):
+        batches=[];batch=[]
+        for member in selected:
+            if item.get('logo_grid') and all(isinstance(b,Spacer) for b in member.blocks):
+                if batch:batches.append(batch);batch=[]
+                batches.append([member])
+            else:
+                batch.append(member)
+                if len(batch)==columns:batches.append(batch);batch=[]
+        if batch:batches.append(batch)
+        unit_start=len(units)
+        for start,members in enumerate(batches):
             if start:
                 pen += gap * flex
             y = round(pen)
             row_height = 0
-            members = selected[start:start + columns]
+            line_start,logo_start=len(result.lines),len(result.logos)
             row_left = look.center_x - (len(members) * width + (len(members) - 1) * gutter) / 2
             for col, member in enumerate(members):
                 part = layout(Crawl(groups=[member], cell_formats=crawl.cell_formats, source_rows=crawl.source_rows),
@@ -389,12 +522,19 @@ def _arranged_layout(crawl: Crawl, look: Look, flex: float) -> Layout:
                     row_height = max(row_height, part.content_height, part.groups[-1][1])
             pen += row_height
             result.groups.append((y, max(result.content_height, math.ceil(pen))))
+            blocks=[block for member in members for block in member.blocks]
+            edges=[[b for b in member.blocks if not isinstance(b,Spacer)] for member in members]
+            units.append(_spacing_unit(result,blocks,line_start,logo_start,len(result.groups)-1,
+                         all(edge and isinstance(edge[0],LogoRow) for edge in edges),
+                         all(edge and isinstance(edge[-1],LogoRow) for edge in edges)))
         if item.get('logo_grid'):
             pen = max(pen, result.content_height)
             # The composition can have art dragged across grid-row boundaries;
             # preserve it as one panel-break unit.
             result.groups[grid_group_start:] = [(grid_top, math.ceil(pen))]
+            for unit in units[unit_start:]:unit['group']=grid_group_start
     result.target_height = result.content_height
+    _normalize_logo_spacing(result,look,flex,units)
     return result
 
 

@@ -22,7 +22,7 @@ from typing import Callable, Dict, List, Optional
 
 from . import export, fusion, ingest, layout as layout_mod, lint, render as render_mod, text, timing as timing_mod
 from .look import Look
-from .model import Crawl
+from .model import Crawl, LogoRow
 from .timing import Solution, Timing
 
 PROJECT_SUFFIX = ".crawl.json"
@@ -414,9 +414,9 @@ def prepare(project: Project, crawl: Optional[Crawl] = None) -> Build:
     findings = findings_for(project, crawl)
     fixed, flex_px = layout_mod.measure(crawl, project.look)
     sol = timing_mod.solve(project.timing, fixed, flex_px, project.look.height)
-    if crawl.arrangements:
-        # The tallest block in a grid row can change as spacing scales. Use
-        # actual layouts to refine the linear estimate before final fitting.
+    if crawl.arrangements or any(isinstance(block,LogoRow) for block in crawl.blocks()):
+        # Grid rows and visible-ink logo boundaries can change which glyph
+        # sets an edge as spacing scales. Refine against the actual geometry.
         if project.timing.mode == "manual":
             height = layout_mod.layout(crawl, project.look, sol.flex).content_height
             sol.travel_frames = math.ceil((height + project.look.height) / sol.speed)
@@ -428,11 +428,14 @@ def prepare(project: Project, crawl: Optional[Crawl] = None) -> Build:
             high_h = layout_mod.layout(crawl, project.look, high).content_height
             if low_h <= sol.content_height <= high_h:
                 for _ in range(24):
-                    mid = (low + high) / 2
-                    if layout_mod.layout(crawl, project.look, mid).content_height <= sol.content_height:
-                        low = mid
+                    fraction=(sol.content_height-low_h)/max(1,high_h-low_h)
+                    mid=low+(high-low)*max(.01,min(.99,fraction))
+                    height=layout_mod.layout(crawl, project.look, mid).content_height
+                    if height <= sol.content_height:
+                        low,low_h = mid,height
+                        if sol.content_height-height<=1:break
                     else:
-                        high = mid
+                        high,high_h = mid,height
                 sol.flex = low
     L = layout_mod.fit(crawl, project.look, sol.flex, sol.content_height)
     layout_mod.split_panels(L, project.max_panel)
