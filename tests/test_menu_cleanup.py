@@ -83,3 +83,22 @@ def test_main_window_opens_logo_editor_at_matching_section(tmp_path,monkeypatch)
     assert win.tabs.currentWidget() is win.logo_workspace
     assert win.logo_workspace.current()['start']==2
     win._unsaved=False;win.close()
+
+
+def test_logo_block_without_grid_opens_and_selects_its_artwork(tmp_path,monkeypatch):
+    from PySide6.QtCore import QSettings
+    from crawl.ui.main_window import MainWindow
+    settings=QSettings(str(tmp_path/'settings.ini'),QSettings.IniFormat)
+    monkeypatch.setattr(MainWindow,'_settings',lambda self:settings)
+    rows=[['[Logo: First]','',''],['','',''],['[Logo: Second]','','']]
+    win=MainWindow(Project(rows=rows));win._debounce.stop()
+    e=win.sheet_editor;e.table.setCurrentCell(2,0)
+    assert e.arrange_button.text()=='Edit logo block…'
+    e.arrange_button.click()
+    assert win.tabs.currentWidget() is win.logo_workspace
+    assert [item.text() for item in win.logo_workspace.artwork.selectedItems()]==['Second']
+    assert win.logo_workspace.inspector.label=='Second'
+    win.tabs.setCurrentWidget(e)
+    next(action for action in e._build_context_menu().actions() if action.text()=='Edit logo block…').trigger()
+    assert win.logo_workspace.inspector.label=='Second'
+    win._unsaved=False;win.close()

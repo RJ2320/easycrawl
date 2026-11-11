@@ -522,6 +522,21 @@ The color picker includes a swatch, RGB controls and hex entry. Uncheck **Font c
 to inherit the section color again. Color applies to previews and color exports;
 luminance-only panels remain monochrome mattes.
 
+Spreadsheet row labels show the actual interpretation: Heading, Song title,
+Role / name, Names only, Thanks, List, Music, Legal or Logos. A **✓** marks an
+explicit layout choice; **\*** marks local text styling. Hover the row label for
+details. **Layout → Show row types** toggles these labels without changing credits.
+Mixed-case section headings use the same section-header style as uppercase
+headings; song titles keep their separate music styling. **Layout → Section heading**
+can explicitly mark a heading in any single populated cell.
+Select a logo row and click **Edit logo block…** (or right-click and choose it) to
+open the Logos page with that row's artwork selected. Existing grids retain their
+**Edit logo grid…** label and also select the artwork on the chosen row.
+Look font groups identify their normal position: centered section headings, role
+text in the left column, names in the right column, thanks names in name columns,
+and legal text in a centered block. Descriptions explain which text follows each
+style and how local cell formatting takes precedence.
+
 **File → Google Sheet is master for credit text** is enabled by default. Refresh
 compares the full current project text against the Google Sheet, including previously
 skipped differences, capitalization, insertions and deletions. All source changes

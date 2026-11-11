@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.17
+
+- Show the actual parsed row type beside spreadsheet row numbers, with details on hover.
+- Distinguish manually marked rows and local text styling, and allow row labels to be hidden under Layout.
+- Make mixed-case section headings follow the section-header style instead of the song-title style.
+- Add a Section heading layout override for single-cell heading rows in any credit column.
+- Open the Logos page directly from any logo block and select that row's artwork, including blocks without a grid.
+- Clarify Look font groups with their normal positions, examples and the difference between thanks headings and thanks names.
+
 ## 0.3.16
 
 - Add a font color picker with RGB and hex entry to manual text formatting.

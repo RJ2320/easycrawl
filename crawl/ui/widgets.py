@@ -62,10 +62,14 @@ class FontPicker(QWidget):
         if FontPicker._families is None:
             FontPicker._families = fonts.families()
         self.family = QComboBox()
+        self.family.setAccessibleName('Font family')
+        self.family.setToolTip('Font family, such as Arial or Libre Baskerville')
         self.family.setEditable(True)
         self.family.setInsertPolicy(QComboBox.NoInsert)
         self.family.addItems(sorted(self._families.keys(), key=str.lower))
         self.style = QComboBox()
+        self.style.setAccessibleName('Font style / weight')
+        self.style.setToolTip('Typeface style or weight, such as Regular, Bold or Italic')
         # Otherwise each combo is as wide as its longest font name and the row overflows.
         for combo, chars in ((self.family, 12), (self.style, 7)):
             combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -188,8 +192,8 @@ class StyleEditor(QGroupBox):
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 6, 0, 2)
         column.setSpacing(6)
-        column.addWidget(resettable(self.font, lambda: self.defaults().font, "font", self._reset_font))
         metrics = QFormLayout()
+        metrics.addRow("Font / weight", resettable(self.font, lambda: self.defaults().font, "font", self._reset_font))
         metrics.addRow("Font size", resettable(self.size, lambda: self.defaults().size, "font size"))
         metrics.addRow("Line spacing", resettable(self.leading, lambda: self.defaults().leading, "line spacing"))
         self.leading.setToolTip("Distance between text baselines, in output pixels.\n"

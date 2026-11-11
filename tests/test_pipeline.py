@@ -33,8 +33,8 @@ def test_parse_basic_shapes():
     ))
     kinds = [type(b).__name__ for b in c.blocks()]
     assert kinds == ["Header", "RolePair", "Header", "RolePair", "ListBlock", "LogoRow", "Legal"]
-    h1, rp, song = list(c.blocks())[:3]
-    assert h1.level == 1 and song.level == 2
+    h1, rp, heading = list(c.blocks())[:3]
+    assert h1.level == 1 and heading.level == 1
     assert rp.names == ["A Person", "B Person"]
     assert len(c.groups) == 4
     assert list(c.blocks())[4].names[0] == "Partner 0"

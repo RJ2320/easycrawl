@@ -348,7 +348,7 @@ def _xlsx_rows(ws) -> List[List[str]]:
 #   list     set in list columns even if the run is short
 #   center   one centred line per row
 LAYOUT_KINDS = ("roles", "list", "center", "center_name", "legal", "thanks",
-                "names_left", "names_center", "names_right")
+                "names_left", "names_center", "names_right", "heading")
 
 
 def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_before=(),
@@ -426,6 +426,10 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
 
         if i > 0 and i - 1 in explicit_music and i not in explicit_music:
             in_music, in_song = False, False
+        if kinds.get(i) == 'heading':
+            group.blocks.append(Header(text=' '.join(value for value in (b,c,d) if value),level=1,row=rownum))
+            i += 1
+            continue
         if kinds.get(i, '').startswith('names_'):
             cells = [b, d] if d and not c and b else [value for value in (b,c,d) if value]
             group.blocks.append(RolePair(role='', names=[name for value in cells for name in _split_names(value)],
@@ -457,7 +461,7 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
             names=[]; source_rows=[]; source_columns=[]
             flow=section.get('flow','across')
             while (i <= section['end'] and i < n and any(rows[i])
-                   and kinds.get(i) not in ('legal', 'roles', 'center_name')
+                   and kinds.get(i) not in ('legal', 'roles', 'center_name', 'heading')
                    and not kinds.get(i, '').startswith('names_')):
                 if flow == 'sheet':
                     for column,value in enumerate(rows[i]):
@@ -519,7 +523,9 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
             i += 1
             continue
         if c:
-            group.blocks.append(Header(text=c, level=1 if _is_caps(c) else 2, row=rownum))
+            # Capitalization is a display choice, not a heading category.
+            # Only recognized song titles (handled above) use the song style.
+            group.blocks.append(Header(text=c, level=1, row=rownum))
             i += 1
             continue
         if d:

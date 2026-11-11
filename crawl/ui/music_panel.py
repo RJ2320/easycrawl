@@ -37,8 +37,8 @@ class MusicPanel(QWidget):
             control.valueChanged.connect(self._apply)
         layout.addLayout(form)
         self.editors = {}
-        for key, label in [('song', 'Song title'), ('music_role', 'Labels — Written by, Performed by…'),
-                           ('music_name', 'Music credit names')]:
+        for key, label in [('song', 'Song titles (centered)'), ('music_role', 'Music labels (before names)'),
+                           ('music_name', 'Music names (after the label)')]:
             editor = StyleEditor(label, getattr(project.look, key))
             editor.defaults = lambda key=key: getattr(default_look(self.project), key)
             self.editors[key] = editor

@@ -99,7 +99,7 @@ def test_editor_outline_edit_remove_and_insert():
     e.load(ROWS)
     e.apply_arrangement(range(2, 14), label='Music pairs')
     assert e.table.starts_at(2)
-    assert e.cell_tooltip(3, 1) == 'Music pairs · 2 columns'
+    assert e.cell_tooltip(3, 1).endswith('Music pairs · 2 columns')
     e.table.setCurrentCell(3, 0)
     e.insert_row()
     assert p.arrangements[0]['end'] == 14

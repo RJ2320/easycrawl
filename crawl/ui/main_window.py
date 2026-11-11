@@ -218,15 +218,24 @@ class LookPanel(QWidget):
         self.supersample = _spin(1, 4, " ×")
 
         self.editors = {
-            "header": StyleEditor("Section headings", look.header),
-            "role": StyleEditor("Credit roles / job titles", look.role),
-            "name": StyleEditor("Credit names", look.name),
-            "list": StyleEditor("Thanks / partner names", look.list),
-            "legal": StyleEditor("Legal text", look.legal),
+            "header": StyleEditor("Section headings (centered)", look.header),
+            "role": StyleEditor("Role / job title (left column)", look.role),
+            "name": StyleEditor("Name (right column)", look.name),
+            "list": StyleEditor("Thanks / partner names (name columns)", look.list),
+            "legal": StyleEditor("Legal / copyright (centered block)", look.legal),
         }
-
+        descriptions = {
+            'header': 'Department and company headings, including the Special Thanks heading. Song titles use the separate Music settings.',
+            'role': 'For example, Director. Usually right-aligned toward the middle gap.',
+            'name': 'For example, Avery Morgan. Usually left-aligned from the middle gap. Names-only layouts use this style in both columns.',
+            'list': 'Names beneath Special Thanks and partner headings. The heading above them uses Section headings.',
+            'legal': 'Copyright notices and disclaimer paragraphs, wrapped within a centered text block.',
+        }
         for key, editor in self.editors.items():
             editor.defaults = lambda key=key: getattr(default_look(self.project), key)
+            description=QLabel(descriptions[key]);description.setWordWrap(True)
+            description.setProperty('role','caption')
+            editor.layout().insertWidget(0,description)
         reset_keys = {
             self.header_before: 'header_gap_before', self.header_after: 'header_gap_after',
             self.ignore_blank_after_header: 'ignore_blank_after_header', self.gutter: 'gutter',
@@ -286,8 +295,9 @@ class LookPanel(QWidget):
 
         inner = QWidget()
         il = QVBoxLayout(inner)
-        note = QLabel("Choose a font, size and spacing for each text type. These styles apply across the project. "
-                      "Mark individual sections in Credits to choose their column layouts. "
+        note = QLabel("Shared font settings for the row types shown in Credits. Position labels describe the normal layout. "
+                      "A row marked * has local text styling, which can override these defaults. "
+                      "Use Credits → Layout → Text formatting for individual changes. "
                       "Spacing is measured in output pixels; Fit runtime may scale vertical spacing.")
         note.setWordWrap(True)
         il.addWidget(note)
@@ -1825,6 +1835,7 @@ class MainWindow(QMainWindow):
         # Reparse so artwork assignments and list-column changes reach the build.
         if self.crawl is not None:
             self.crawl = proj.crawl_from_rows(self.project, self.sheet_editor.rows())
+            self.sheet_editor.refresh_row_types(self.crawl)
         self.build = None
         self.logo_workspace.build = None
         self.logo_workspace.view.set_busy(True)
@@ -1924,10 +1935,7 @@ class MainWindow(QMainWindow):
         self._restore_panel_layout()
         self.tabs.setCurrentWidget(self.logo_workspace)
         self.logo_workspace.refresh()
-        index=next((i for i,section in enumerate(self.logo_workspace.sections)
-                    if section['start']<=row-1<=section['end']),None)
-        if index is not None:
-            self.logo_workspace.section.setCurrentIndex(index)
+        self.logo_workspace.select_source_row(row-1)
 
     def _show_music_style(self):
         self._restore_panel_layout()

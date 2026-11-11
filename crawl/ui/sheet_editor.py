@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
+from PySide6.QtGui import QAction, QColor, QFontMetrics, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
                                QStackedLayout, QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QToolButton,
@@ -27,12 +27,13 @@ LAYOUT_LABELS = {
     'center_name': 'Centered credit name',
     'legal': 'Legal text',
     'thanks': 'Special thanks',
+    'heading': 'Section heading',
     'names_left': 'Names only — left aligned',
     'names_center': 'Names only — centered',
     'names_right': 'Names only — right aligned',
 }
 LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles / names (two columns)', 'list': 'List in columns',
-                'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
+                'heading': 'Section heading', 'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
 UNDO_LIMIT = 200
 
 
@@ -65,6 +66,8 @@ class SheetEditor(QWidget):
     def __init__(self, project, parent=None):
         super().__init__(parent)
         self.project = project
+        self._show_row_types = True
+        self._row_types = []
         self.findings = []
         self.finding_index = -1
         self._resume_error_row = None
@@ -260,6 +263,7 @@ class SheetEditor(QWidget):
         self._band_rows = {a['start'] for a in self.project.arrangements}
         self._sync_empty()
         self.refresh_arrangements()
+        self.refresh_row_types()
 
     def rows(self):
         return [[self.table.item(r, c).text() if self.table.item(r, c) else ''
@@ -283,6 +287,7 @@ class SheetEditor(QWidget):
         else:
             self._drop_findings(touched_rows)
         self.project.rows = self.rows()
+        self.refresh_row_types()
         self.table.sync_centered_rows()
         self._sync_empty()
         self.commit_undo()
@@ -767,6 +772,11 @@ class SheetEditor(QWidget):
         menu.aboutToShow.connect(update)
 
     def _populate_layout_menu(self, menu):
+        show_types=menu.addAction('Show row types')
+        show_types.setCheckable(True);show_types.setChecked(self._show_row_types)
+        show_types.setToolTip('Labels beside row numbers show how each row is interpreted. ✓ = manually marked; * = local text styling. Hover a row label for details.')
+        show_types.toggled.connect(self.set_row_types_visible)
+        menu.addSeparator()
         for kind,label in LAYOUT_SHORT.items():
             if kind=='list':
                 continue
@@ -808,9 +818,35 @@ class SheetEditor(QWidget):
             if kind == 'center_name':
                 kind = 'names_center'
             for action in menu.actions()+advanced.actions()+names.actions():
-                if action.isCheckable():action.setChecked(action.data()==kind)
+                if action.isCheckable() and action.data() is not None:action.setChecked(action.data()==kind)
+            show_types.blockSignals(True);show_types.setChecked(self._show_row_types);show_types.blockSignals(False)
         menu.aboutToShow.connect(update)
         update()
+
+    def set_row_types_visible(self, visible):
+        self._show_row_types = visible
+        self.refresh_row_types()
+
+    def refresh_row_types(self, crawl=None):
+        from ..project import crawl_from_rows
+        from .row_types import describe_rows
+        from . import theme
+        if crawl is None:
+            crawl=crawl_from_rows(self.project,self.rows())
+        self._row_types=describe_rows(crawl,self.project,self.table.rowCount())
+        header=self.table.verticalHeader()
+        width=QFontMetrics(header.font()).horizontalAdvance('9999 · Role / name * ✓')+18 if self._show_row_types else QFontMetrics(header.font()).horizontalAdvance(str(max(1,self.table.rowCount())))+18
+        header.setFixedWidth(width)
+        for row,kind in enumerate(self._row_types):
+            label=f'{row+1} · {kind["label"]}' if self._show_row_types and kind['label'] else str(row+1)
+            if self._show_row_types and kind['manual']:
+                label+=' ✓'
+            item=self.table.verticalHeaderItem(row)
+            if item is None:
+                item=QTableWidgetItem();self.table.setVerticalHeaderItem(row,item)
+            if item.text()!=label:item.setText(label)
+            item.setToolTip(kind['description']+'\nChange the category under Layout; edit local styling under Text formatting.')
+            item.setForeground(QColor(theme.ACCENT if kind['manual'] and self._show_row_types else theme.MUTED))
 
     def apply_bold(self, enabled=True):
         from ..text import FontError
@@ -971,6 +1007,8 @@ class SheetEditor(QWidget):
 
     def cell_tooltip(self, row, col):
         tips = []
+        if row<len(self._row_types):
+            tips.append(self._row_types[row]['description'])
         current = self.table.arrangement_at(row)
         if current:
             tips.append(f"{current.get('label', 'Side by side')} · {current['columns']} columns")
@@ -1032,6 +1070,10 @@ class SheetEditor(QWidget):
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if not occupied or any(sum(bool(value) for value in row)!=1 for row in occupied):
                 raise ValueError('Select a name-only row with just one populated cell. Role/name pairs stay together.')
+        if kind == 'heading':
+            occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
+            if not occupied or any(sum(bool(value) for value in row)!=1 or any(ingest.logo_labels(value) for value in row if value) for row in occupied):
+                raise ValueError('Select heading rows containing one text cell, without names or logos beside it.')
         if kind.startswith('names_'):
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if not occupied or any(ingest.logo_labels(value) for row in occupied for value in row if value):
@@ -1041,7 +1083,7 @@ class SheetEditor(QWidget):
             if (not occupied or any(ingest.logo_labels(b or c) or (c and d)
                     or (not b and c) for b,c,d in occupied)):
                 raise ValueError('Select role/name rows: roles in column B, names in C or D. Keep section headings and logo rows outside this selection.')
-        if not kind.startswith('names_') and kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
+        if not kind.startswith('names_') and kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles', 'heading') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
                                       for r in selected if r < len(rows)):
             raise ValueError('Layout overrides apply to rows with only column B filled '
                              '(roles or names with nothing in C or D).')
@@ -1082,25 +1124,35 @@ class SheetEditor(QWidget):
 
     def _arrangement_action_text(self):
         current=self.current_arrangement()
+        if self._current_logo_labels() and not (current and current.get('logo_grid')):
+            return 'Edit logo block…'
         if current and current.get('music'):
             return 'Edit music layout…'
         if current and current.get('logo_grid'):
             return 'Edit logo grid…'
         return 'Edit side by side…' if current is not None else 'Side by side…'
 
+    def _current_logo_labels(self):
+        row=self.table.currentRow()
+        if row<0:
+            return []
+        values=[self.table.item(row,col).text() if self.table.item(row,col) else '' for col in range(3)]
+        return ingest.logo_labels(values[0] or values[1]) if not values[2] else []
+
     def _edit_current_arrangement(self):
         current=self.current_arrangement()
-        if current and current.get('music'):
-            self.music_dialog()
-        elif current and current.get('logo_grid'):
+        if self._current_logo_labels() or (current and current.get('logo_grid')):
             self.logo_layout_requested.emit(self.table.currentRow()+1)
+        elif current and current.get('music'):
+            self.music_dialog()
         else:
             self.arrange_dialog(edit=current is not None)
 
     def _selection_changed(self):
         self.arrange_button.setText(self._arrangement_action_text())
         current=self.current_arrangement()
-        self.arrange_button.setToolTip('Open this section in the Music editor' if current and current.get('music') else
+        self.arrange_button.setToolTip('Open the Logos page and select the logos on this row' if self._current_logo_labels() else
+                                      'Open this section in the Music editor' if current and current.get('music') else
                                       'Open this section in the Logos editor' if current and current.get('logo_grid') else
                                       'Arrange whole credit groups next to each other in columns')
 

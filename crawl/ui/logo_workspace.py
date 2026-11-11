@@ -135,6 +135,19 @@ class LogoWorkspace(QWidget):
         index = self.section.currentIndex()
         return self.sections[index] if 0 <= index < len(self.sections) else None
 
+    def select_source_row(self, row):
+        """Focus the matching section and artwork for a zero-based credits row."""
+        index=next((i for i,section in enumerate(self.sections) if section['start']<=row<=section['end']),None)
+        if index is None:
+            return
+        self.section.setCurrentIndex(index)
+        values=self.editor.rows()[row]
+        labels=set(ingest.logo_labels(values[0] or values[1])) if not values[2] else set()
+        if labels:
+            self._canvas_selection(labels)
+            if self.artwork.currentItem():
+                self.artwork.scrollToItem(self.artwork.currentItem())
+
     def refresh(self):
         previous = self.current()
         selected = {item.text() for item in self.artwork.selectedItems()}
