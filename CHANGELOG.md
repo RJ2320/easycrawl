@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.13
+
+- Unify toolbar and right-click Layout menus, group row operations and remove duplicate commands.
+- Route music and logo grid editing to their dedicated editors instead of the generic Side by side dialog.
+- Support populated Roles / names overrides with normal two-column alignment, even inside music sections.
+- Separate Recent projects from Recent source sheets with friendly labels and independent history limits.
+- Add Match spreadsheet columns for Special thanks, preserving left/right pairs, empty cells and centered middle-column entries.
+- Keep wrapping, hidden source coordinates, saving and undo consistent with spreadsheet-matched name grids.
+
 ## 0.3.12
 
 - Ignore hidden worksheet rows without adding text or spacing, while preserving visible blank rows and source coordinates.

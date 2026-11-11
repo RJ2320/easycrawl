@@ -374,7 +374,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
                       ignore_blank_after_header=ignore_blank_after_header)
         for block in crawl.blocks():
             if isinstance(block, ListBlock):
-                block.source_rows = [visible[block.row-1+i]+1 for i in range(len(block.names))]
+                source_rows = block.source_rows or [block.row+i for i in range(len(block.names))]
+                block.source_rows = [visible[row-1]+1 for row in source_rows]
             if isinstance(block, LogoRow):
                 for logo in block.logos:
                     logo.row = visible[logo.row-1]+1
@@ -424,6 +425,12 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
 
         if i > 0 and i - 1 in explicit_music and i not in explicit_music:
             in_music, in_song = False, False
+        if kinds.get(i) == 'roles' and (b or d) and not logo_labels(b or c):
+            names = _split_names(d or c)
+            group.blocks.append(RolePair(role=b, names=names, row=rownum,
+                                         names_pending=bool(b and not names), two_column=True))
+            i += 1
+            continue
         if kinds.get(i) == 'center_name' and sum(bool(value) for value in (b,c,d)) == 1:
             group.blocks.append(RolePair(role='', names=_split_names(b or c or d), row=rownum, center_names=True))
             i += 1
@@ -438,13 +445,21 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
                 group.blocks.append(Header(text=" ".join(v for v in (b,c,d) if v), level=1, row=rownum))
                 i += 1
                 continue
-            names=[]
+            names=[]; source_rows=[]; source_columns=[]
+            flow=section.get('flow','across')
             while i <= section['end'] and i < n and any(rows[i]) and kinds.get(i) != 'legal':
-                names.append("\n".join(value for value in rows[i] if value))
+                if flow == 'sheet':
+                    for column,value in enumerate(rows[i]):
+                        if value:
+                            names.append(value);source_rows.append(i+1);source_columns.append(column)
+                else:
+                    names.append("\n".join(value for value in rows[i] if value))
                 i += 1
             group.blocks.append(ListBlock(names=names, columns=section.get('columns',3), row=rownum,
                                           width_percent=section.get('width_percent'),
-                                          column_gap=section.get('column_gap'), flow=section.get('flow','across')))
+                                          column_gap=section.get('column_gap'), flow=flow,
+                                          source_rows=source_rows if flow=='sheet' else None,
+                                          source_columns=source_columns if flow=='sheet' else None))
             continue
         if i in explicit_music:
             block = explicit_music[i]

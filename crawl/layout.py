@@ -124,7 +124,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                             put(line, 'name', look.center_x, 'ms', pen)
                             pen += styles['name'].leading * flex
                     continue
-                if b.music or column_width:
+                if b.music or (column_width and not b.two_column):
                     role_style, name_style = ("music_role", "music_name") if b.music else ("role", "name")
                     label_width = text.width(styles[role_style], b.role) if b.role else 0
                     gap = look.music_inline_gap if b.role else 0
@@ -169,7 +169,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     pen += styles["name"].leading * flex
 
             elif isinstance(b, ListBlock):
-                if column_width:
+                if column_width and b.flow != 'sheet':
                     for name_index, name in enumerate(b.names):
                         for line in text.wrap(look.list, name, column_width):
                             put(line, "list", 0 if alignment == "left" else look.center_x,
@@ -315,6 +315,22 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put) -> 
     cols = max(1, b.columns)
     n = len(b.names)
     rows = math.ceil(n / cols)
+    centered = {}
+    indices = None
+    if b.flow == 'sheet':
+        if b.source_rows is None or b.source_columns is None:
+            raise ValueError('This list is missing its source-column information. Reapply Match spreadsheet columns.')
+        source_rows = list(dict.fromkeys(b.source_rows))
+        active = sorted(set(b.source_columns))
+        cells = {(row,column): index for index,(row,column) in enumerate(zip(b.source_rows,b.source_columns))}
+        # B and D are the two name columns. A lone C entry is a centered line.
+        if 0 in active and 2 in active and all(not any((row,col) in cells for col in (0,2))
+                                              for row,col in cells if col==1):
+            active = [0,2]
+            centered = {r:cells[(row,1)] for r,row in enumerate(source_rows) if (row,1) in cells}
+        cols = max(1,len(active))
+        rows = len(source_rows)
+        indices = [[cells.get((row,column)) for row in source_rows] for column in active]
     block_width = look.list_width if b.width_percent is None else look.width * b.width_percent / 100
     if b.width_percent is not None and not 1 <= b.width_percent <= 100:
         raise ValueError('Thanks section width must be between 1% and 100% of the frame.')
@@ -327,11 +343,12 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put) -> 
     lead = look.list.leading * flex
     # Keep the source index attached to each entry for preview selection,
     # including wrapped names and an incomplete final display row.
-    if b.flow not in ('across', 'down'):
+    if b.flow not in ('across', 'down', 'sheet'):
         raise ValueError('Choose across rows or down columns for thanks name order.')
-    indices = [list(range(c, n, cols)) if b.flow == 'across'
-               else list(range(c * rows, min((c + 1) * rows, n))) for c in range(cols)]
-    columns = [[text.wrap(look.list, b.names[index], col_w) for index in column]
+    if indices is None:
+        indices = [list(range(c, n, cols)) if b.flow == 'across'
+                   else list(range(c * rows, min((c + 1) * rows, n))) for c in range(cols)]
+    columns = [[text.wrap(look.list, b.names[index], col_w) if index is not None else [] for index in column]
                for column in indices]
     # Width is a wrapping limit, not a command to spread short names apart.
     # Fit each column to its widest rendered line, then centre the whole block.
@@ -343,6 +360,12 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put) -> 
         centres.append(int(round(left + width / 2)))
         left += width + gap
     for r in range(rows):
+        if r in centered:
+            index = centered[r]
+            for line in text.wrap(look.list,b.names[index],block_width):
+                put(line,'list',look.center_x,'ms',pen,b.name_row(index))
+                pen += lead
+            continue
         line_count = max((len(column[r]) for column in columns if r < len(column)), default=1)
         for c, column in enumerate(columns):
             if r >= len(column):

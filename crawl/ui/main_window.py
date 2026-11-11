@@ -672,6 +672,7 @@ class MainWindow(QMainWindow):
         self.sheet_editor.finding_selected.connect(self.jump_to_finding)
         self.sheet_editor.import_history_requested.connect(self.show_import_history)
         self.sheet_editor.music_style_requested.connect(self._show_music_style)
+        self.sheet_editor.logo_layout_requested.connect(self._show_logo_layout)
         self.sheet_editor.preview_requested.connect(self.seek_row)
         self.preview.view.credit_selected.connect(self._select_preview_credit)
         self.sheet_editor.restored.connect(self._history_restored)
@@ -970,7 +971,8 @@ class MainWindow(QMainWindow):
         self._act(m, "Open Google Sheet…", "Ctrl+Shift+G", self.open_google_sheet).setToolTip(
             "Paste the link of a sheet shared as 'Anyone with the link can view'")
         self._act(m, "Open Project…", "Ctrl+Shift+O", self.open_project)
-        self.recent_menu = m.addMenu("Open Recent")
+        self.recent_menu = m.addMenu("Recent projects")
+        self.recent_sheets_menu = m.addMenu("Recent source sheets")
         m.addSeparator()
         self._act(m, "Update from Revised Sheet…", "Ctrl+U", self.update_from_sheet).setToolTip(
             "Review source credit changes while retaining EasyCrawl formatting")
@@ -1173,20 +1175,97 @@ class MainWindow(QMainWindow):
         paths = [value] if isinstance(value, str) else list(value or [])
         return [p for p in paths if p and (gsheets.is_link(p) or Path(p).exists())]
 
+    def _recent_labels(self):
+        try:
+            value = json.loads(self._settings().value('recentLabels', '{}'))
+            return value if isinstance(value, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
+    def _project_recent_name(self, path):
+        name = Path(path).name
+        return name[:-len(proj.PROJECT_SUFFIX)] if name.endswith(proj.PROJECT_SUFFIX) else Path(path).stem
+
     def _remember(self, path: str):
         path = gsheets.canonical(path) if gsheets.is_link(path) else str(Path(path).resolve())
         paths = [path] + [p for p in self._recent() if p != path]
-        self._settings().setValue("recent", paths[:RECENT_LIMIT])
+        # Sources no longer push saved projects out of their own recent list.
+        projects = [p for p in paths if p.endswith(proj.PROJECT_SUFFIX)][:RECENT_LIMIT]
+        sheets = [p for p in paths if not p.endswith(proj.PROJECT_SUFFIX)][:RECENT_LIMIT]
+        keep = set(projects + sheets)
+        self._settings().setValue('recent', [p for p in paths if p in keep])
+        labels = self._recent_labels()
+        if gsheets.is_link(path) and path not in labels:
+            if self.project_path:
+                labels[path] = self._project_recent_name(self.project_path)
+                self._settings().setValue('recentLabels', json.dumps(labels))
         self._rebuild_recent_menu()
+
+    def _rename_current_recent_sheet(self):
+        url = self.project.source_url
+        if not gsheets.is_link(url):
+            return
+        url = gsheets.canonical(url)
+        labels = self._recent_labels()
+        name, ok = QInputDialog.getText(self, 'Name Google Sheet', 'Name shown in Recent source sheets',
+                                        text=labels.get(url, self.project.sheet or 'Credits'))
+        if ok and name.strip():
+            labels[url] = name.strip()
+            self._settings().setValue('recentLabels', json.dumps(labels))
+            self._remember(url)
 
     def _rebuild_recent_menu(self):
         self.recent_menu.clear()
+        self.recent_sheets_menu.clear()
         paths = self._recent()
-        for path in paths:
-            label = "Google Sheet " + gsheets.parse(path)[0][:8] + "…" if gsheets.is_link(path) else Path(path).name
-            self.recent_menu.addAction(label, lambda p=path: self.open_path(p)).setToolTip(path)
+        labels = self._recent_labels()
+        projects = [p for p in paths if p.endswith(proj.PROJECT_SUFFIX)]
+        sources = [p for p in paths if not p.endswith(proj.PROJECT_SUFFIX)]
+        # Recover friendly Google labels from existing project associations.
+        associations = {}
+        for path in projects:
+            try:
+                state = json.loads(Path(path).read_text(encoding='utf-8'))
+                url = state.get('source_url', '')
+                if gsheets.is_link(url):
+                    associations.setdefault(gsheets.canonical(url), self._project_recent_name(path))
+            except (OSError, ValueError, AttributeError):
+                continue
+        labels = {**associations, **labels}
+        if gsheets.is_link(self.project.source_url) and self.project_path:
+            labels.setdefault(gsheets.canonical(self.project.source_url), self._project_recent_name(self.project_path))
+        self._settings().setValue('recentLabels', json.dumps(labels))
+        project_names = [self._project_recent_name(path) for path in projects]
+        for path, name in zip(projects, project_names):
+            if project_names.count(name)>1:
+                name += ' — ' + str(Path(path).parent)
+            action = self.recent_menu.addAction(name.replace('&','&&'), lambda p=path: self.open_path(p))
+            action.setData(path)
+            action.setToolTip('Open saved project: layouts, artwork and timing\n'+path)
+        linked_cache_names = {gsheets.filename(url) for url in sources if gsheets.is_link(url)}
+        visible_sources = []
+        for path in sources:
+            # Hide the local download of a sheet that already has a live-link entry.
+            if not gsheets.is_link(path) and Path(path).name in linked_cache_names:
+                continue
+            visible_sources.append(path)
+            if gsheets.is_link(path):
+                name = labels.get(gsheets.canonical(path), 'Unnamed Google Sheet')
+                label = name + ' — Google Sheet'
+            else:
+                kind = 'Excel sheet' if Path(path).suffix.lower() in ('.xlsx','.xlsm') else 'CSV sheet'
+                label = Path(path).stem + ' — ' + kind
+            action = self.recent_sheets_menu.addAction(label.replace('&','&&'), lambda p=path: self.open_path(p))
+            action.setData(path)
+            action.setToolTip('Open source credits; this is not a saved EasyCrawl project\n'+path)
+        if gsheets.is_link(self.project.source_url):
+            if visible_sources:
+                self.recent_sheets_menu.addSeparator()
+            self.recent_sheets_menu.addAction('Name current Google Sheet…', self._rename_current_recent_sheet)
         self.recent_menu.setToolTipsVisible(True)
-        self.recent_menu.setEnabled(bool(paths))
+        self.recent_sheets_menu.setToolTipsVisible(True)
+        self.recent_menu.setEnabled(bool(projects))
+        self.recent_sheets_menu.setEnabled(bool(visible_sources) or gsheets.is_link(self.project.source_url))
 
     # ---- drag and drop -----------------------------------------------------
 
@@ -1650,8 +1729,8 @@ class MainWindow(QMainWindow):
             if not path.endswith(proj.PROJECT_SUFFIX):
                 path += proj.PROJECT_SUFFIX
             self.project_path = path
-            self._remember(path)
         self.project.save(self.project_path)
+        self._remember(self.project_path)
         self._unsaved = False
         self._title()
         self.statusBar().showMessage(f"Saved {self.project_path}")
@@ -1877,6 +1956,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(first)
 
     # ---- logos -------------------------------------------------------------
+
+    def _show_logo_layout(self, row):
+        self._restore_panel_layout()
+        self.tabs.setCurrentWidget(self.logo_workspace)
+        self.logo_workspace.refresh()
+        index=next((i for i,section in enumerate(self.logo_workspace.sections)
+                    if section['start']<=row-1<=section['end']),None)
+        if index is not None:
+            self.logo_workspace.section.setCurrentIndex(index)
 
     def _show_music_style(self):
         self._restore_panel_layout()

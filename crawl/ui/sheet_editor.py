@@ -21,14 +21,14 @@ from .widgets import _spin, panel_expand_icon, resettable, default_look
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
-    'roles': 'Roles — left column, names to come',
+    'roles': 'Roles and names — two columns',
     'list': 'List in columns',
     'center': 'Centred lines',
     'center_name': 'Centered credit name',
     'legal': 'Legal text',
     'thanks': 'Special thanks',
 }
-LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles (names to come)', 'list': 'List in columns',
+LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles / names (two columns)', 'list': 'List in columns',
                 'center': 'Centred lines', 'center_name': 'Center credit name', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
 UNDO_LIMIT = 200
 
@@ -47,6 +47,7 @@ def _tool(text, tip='', menu=None):
 
 class SheetEditor(QWidget):
     music_style_requested = Signal()
+    logo_layout_requested = Signal(int)
     import_history_requested = Signal()
     changed = Signal()
     finding_selected = Signal(int, str)
@@ -77,18 +78,9 @@ class SheetEditor(QWidget):
 
         # ---- row 1: things you do to the sheet -----------------------------
         insert_menu = QMenu(self)
-        insert_menu.addAction('Row above', lambda: self.insert_rows(above=True))
-        insert_menu.addAction('Row below', lambda: self.insert_rows(above=False))
-        insert_menu.addAction('Insert rows above…', lambda: self.insert_rows_dialog(above=True))
-        insert_menu.addAction('Insert rows below…', lambda: self.insert_rows_dialog(above=False))
-        insert_menu.addSeparator()
-        insert_menu.addAction('Delete rows', self.delete_rows)
+        self._populate_rows_menu(insert_menu)
         layout_menu = QMenu(self)
-        for kind, label in LAYOUT_SHORT.items():
-            layout_menu.addAction(label, lambda k=kind: self._apply_layout_to_selection(k))
-        layout_menu.addSeparator()
-        layout_menu.addAction('Music…', self.music_dialog)
-        layout_menu.addAction('Logo library…', self.add_logos)
+        self._populate_layout_menu(layout_menu)
         more_menu = QMenu('Review and export', self)
         self.show_in_preview = QAction('Show in preview', self)
         self.show_in_preview.setEnabled(False)
@@ -224,7 +216,7 @@ class SheetEditor(QWidget):
         layout.addWidget(body, 1)
 
         self.table.currentCellChanged.connect(self._preview_selection_changed)
-        self.arrange_button.clicked.connect(lambda: self.arrange_dialog())
+        self.arrange_button.clicked.connect(self._edit_current_arrangement)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellChanged.connect(self._cell_changed)
         self.table.cellClicked.connect(self._cell_clicked)
@@ -757,48 +749,72 @@ class SheetEditor(QWidget):
 
     # ---- context menu ------------------------------------------------------------
 
-    def _context_menu(self, global_pos):
-        if not self.table.rowCount():
-            return
-        menu = QMenu(self)
-        menu.addAction('Cut', self.cut, QKeySequence.Cut)
-        menu.addAction('Copy', self.copy, QKeySequence.Copy)
-        menu.addAction('Paste', self.paste, QKeySequence.Paste)
-        menu.addAction('Clear', self.clear_cells)
-        flagged = self._selected_finding_indices()
+    def _populate_rows_menu(self, menu):
+        above=menu.addAction('Insert row above',lambda:self.insert_rows(above=True))
+        below=menu.addAction('Insert row below',lambda:self.insert_rows(above=False))
+        menu.addAction('Insert rows above…',lambda:self.insert_rows_dialog(above=True))
+        menu.addAction('Insert rows below…',lambda:self.insert_rows_dialog(above=False))
+        menu.addSeparator()
+        delete=menu.addAction('Delete row',self.delete_rows)
+        def update():
+            count=max(1,len(self._selected_rows()))
+            label='row' if count==1 else f'{count} rows'
+            above.setText(f'Insert {label} above')
+            below.setText(f'Insert {label} below')
+            delete.setText(f'Delete {label}')
+        menu.aboutToShow.connect(update)
+
+    def _populate_layout_menu(self, menu):
+        for kind,label in LAYOUT_SHORT.items():
+            if kind=='list':
+                continue
+            action=menu.addAction(label,lambda checked=False,k=kind:self._apply_layout_to_selection(k))
+            action.setCheckable(True);action.setData(kind)
+        menu.addSeparator()
+        music=menu.addAction('Music…',self.music_dialog)
+        music.setCheckable(True);music.setData('music')
+        menu.addAction('Logo library…',self.add_logos)
+        menu.addSeparator()
+        advanced=menu.addMenu('More layouts')
+        action=advanced.addAction(LAYOUT_SHORT['list'],lambda:self._apply_layout_to_selection('list'))
+        action.setCheckable(True);action.setData('list')
+        def update():
+            row=self.table.currentRow()
+            current=self.override_at(row)
+            data=self.rows()
+            logo=0<=row<len(data) and not data[row][2] and ingest.logo_labels(data[row][0] or data[row][1])
+            music=any(item['start']<=row<=item['end'] for item in self.project.music_blocks)
+            kind='logo' if logo else current['kind'] if current else 'music' if music else 'auto'
+            for action in menu.actions()+advanced.actions():
+                if action.isCheckable():action.setChecked(action.data()==kind)
+        menu.aboutToShow.connect(update)
+        update()
+
+    def _build_context_menu(self):
+        menu=QMenu(self)
+        menu.addAction('Cut',self.cut,QKeySequence.Cut)
+        menu.addAction('Copy',self.copy,QKeySequence.Copy)
+        menu.addAction('Paste',self.paste,QKeySequence.Paste)
+        menu.addAction('Clear',self.clear_cells)
+        flagged=self._selected_finding_indices()
         if flagged:
             menu.addSeparator()
-            label = 'Dismiss problem' if len(flagged) == 1 else f'Dismiss {len(flagged)} problems'
-            menu.addAction(label, lambda: self.dismiss(flagged))
+            label='Dismiss problem' if len(flagged)==1 else f'Dismiss {len(flagged)} problems'
+            menu.addAction(label,lambda:self.dismiss(flagged))
         menu.addSeparator()
-        count = max(1, len(self._selected_rows()))
-        plural = f'{count} rows' if count > 1 else 'row'
-        menu.addAction(f'Insert {plural} above', lambda: self.insert_rows(above=True))
-        menu.addAction(f'Insert {plural} below', lambda: self.insert_rows(above=False))
-        menu.addAction('Insert rows above…', lambda: self.insert_rows_dialog(above=True))
-        menu.addAction('Insert rows below…', lambda: self.insert_rows_dialog(above=False))
-        menu.addAction(f'Delete {plural}', self.delete_rows)
-        menu.addSeparator()
-        layout = menu.addMenu('Layout')
-        current = self.override_at(self.table.currentRow())
-        row = self.table.currentRow()
-        data = self.rows()
-        logo = 0 <= row < len(data) and not data[row][2] and ingest.logo_labels(data[row][0] or data[row][1])
-        current_kind = 'logo' if logo else current['kind'] if current else 'auto'
-        for kind, label in LAYOUT_SHORT.items():
-            action = layout.addAction(label, lambda k=kind: self._apply_layout_to_selection(k))
-            action.setCheckable(True)
-            action.setChecked(current_kind == kind)
+        self._populate_rows_menu(menu.addMenu('Rows'))
+        self._populate_layout_menu(menu.addMenu('Layout'))
+        menu.addAction(self._arrangement_action_text(),self._edit_current_arrangement)
         if self.current_arrangement() is not None:
-            menu.addAction('Edit side-by-side arrangement…', lambda: self.arrange_dialog(edit=True))
-            menu.addAction('Remove arrangement', self.remove_arrangement)
-        else:
-            menu.addAction('Arrange side by side…', lambda: self.arrange_dialog())
-        menu.addAction('Add logos…', self.add_logos)
-        menu.addAction('Music…', self.music_dialog)
+            action=menu.addAction('Remove column arrangement',self.remove_arrangement)
+            action.setToolTip('Remove the grid layout while keeping the credit text and section markings')
         menu.addSeparator()
         menu.addAction(self.show_in_preview)
-        menu.exec(global_pos)
+        return menu
+
+    def _context_menu(self, global_pos):
+        if self.table.rowCount():
+            self._build_context_menu().exec(global_pos)
 
     def cell_tooltip(self, row, col):
         tips = []
@@ -843,7 +859,7 @@ class SheetEditor(QWidget):
             raise ValueError(f'Unknown layout {kind!r}.')
         rows = self.rows()
         if kind == 'thanks':
-            if options.get('flow','across') not in ('across','down'):
+            if options.get('flow','across') not in ('across','down','sheet'):
                 raise ValueError('Choose across rows or down columns for name order.')
             columns = options.get('columns', 3)
             if not 1 <= columns <= 6:
@@ -861,7 +877,12 @@ class SheetEditor(QWidget):
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if not occupied or any(sum(bool(value) for value in row)!=1 for row in occupied):
                 raise ValueError('Select a name-only row with just one populated cell. Role/name pairs stay together.')
-        if kind not in ('auto', 'legal', 'thanks', 'center_name') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
+        if kind == 'roles':
+            occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
+            if (not occupied or any(ingest.logo_labels(b or c) or (c and d)
+                    or (not b and c) for b,c,d in occupied)):
+                raise ValueError('Select role/name rows: roles in column B, names in C or D. Keep section headings and logo rows outside this selection.')
+        if kind not in ('auto', 'legal', 'thanks', 'center_name', 'roles') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
                                       for r in selected if r < len(rows)):
             raise ValueError('Layout overrides apply to rows with only column B filled '
                              '(roles or names with nothing in C or D).')
@@ -900,9 +921,29 @@ class SheetEditor(QWidget):
         row = self.table.currentRow()
         return next((a for a in self.project.arrangements if a['start'] <= row <= a['end']), None)
 
+    def _arrangement_action_text(self):
+        current=self.current_arrangement()
+        if current and current.get('music'):
+            return 'Edit music layout…'
+        if current and current.get('logo_grid'):
+            return 'Edit logo grid…'
+        return 'Edit side by side…' if current is not None else 'Side by side…'
+
+    def _edit_current_arrangement(self):
+        current=self.current_arrangement()
+        if current and current.get('music'):
+            self.music_dialog()
+        elif current and current.get('logo_grid'):
+            self.logo_layout_requested.emit(self.table.currentRow()+1)
+        else:
+            self.arrange_dialog(edit=current is not None)
+
     def _selection_changed(self):
-        current = self.current_arrangement()
-        self.arrange_button.setText('Edit side by side…' if current is not None else 'Side by side…')
+        self.arrange_button.setText(self._arrangement_action_text())
+        current=self.current_arrangement()
+        self.arrange_button.setToolTip('Open this section in the Music editor' if current and current.get('music') else
+                                      'Open this section in the Logos editor' if current and current.get('logo_grid') else
+                                      'Arrange whole credit groups next to each other in columns')
 
     def refresh_arrangements(self):
         """Arrangements, overrides or findings changed: repaint, and re-measure
@@ -948,6 +989,9 @@ class SheetEditor(QWidget):
 
     def arrange_dialog(self, edit=False):
         current = self.current_arrangement()
+        if current and (current.get('music') or current.get('logo_grid')):
+            self._edit_current_arrangement()
+            return
         edit = edit or current is not None
         selected = (list(range(current['start'], current['end'] + 1)) if current is not None
                     else sorted({index.row() for index in self.table.selectedIndexes()}))
@@ -1009,7 +1053,7 @@ class SheetEditor(QWidget):
         dialog=QDialog(self);dialog.setWindowTitle('Special thanks section')
         layout=QVBoxLayout(dialog)
         note=QLabel(f'Rows {selected[0]+1}–{selected[-1]+1}. This section has its own heading, columns and width.\n'
-                    'Each populated row remains one entry; its text is not changed.')
+                    'Match spreadsheet columns keeps left/right pairs together; a lone middle-column entry stays centered.')
         note.setWordWrap(True);layout.addWidget(note)
         title=QCheckBox('First selected row is the section heading');title.setChecked(current.get('title',True) if current else True)
         columns=_spin(1,6,'');columns.setValue(current.get('columns',3) if current else 3)
@@ -1020,9 +1064,25 @@ class SheetEditor(QWidget):
         gap=_spin(0,1000,' px')
         gap.setValue(current.get('column_gap',self.project.look.list_column_gap) if current else self.project.look.list_column_gap)
         flow=QComboBox()
-        flow.addItem('Across rows — spreadsheet order','across')
+        flow.addItem('Match spreadsheet columns','sheet')
+        flow.addItem('Across rows — one entry per source row','across')
         flow.addItem('Down each column','down')
-        flow.setCurrentIndex(flow.findData(current.get('flow','across') if current else 'across'))
+        def source_column_count():
+            data=self.rows()
+            body=selected[1:] if title.isChecked() else selected
+            active={column for row in body for column,value in enumerate(data[row]) if value}
+            if 0 in active and 2 in active and all(not data[row][1] or not (data[row][0] or data[row][2]) for row in body):
+                return 2
+            return max(1,len(active))
+        paired=any(self.rows()[row][0] and self.rows()[row][2] for row in selected[1:])
+        flow.setCurrentIndex(flow.findData(current.get('flow','across') if current else ('sheet' if paired else 'across')))
+        def sync_columns(*_):
+            match=flow.currentData()=='sheet'
+            columns.setEnabled(not match)
+            if match:columns.setValue(source_column_count())
+        flow.currentIndexChanged.connect(sync_columns)
+        title.toggled.connect(sync_columns)
+        sync_columns()
         form=QFormLayout();form.addRow('',title);form.addRow('Name columns',columns)
         form.addRow('Name order',flow)
         form.addRow('Maximum section width',resettable(width,lambda:55,'thanks section width'))

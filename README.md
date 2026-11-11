@@ -518,3 +518,28 @@ Master-sheet refreshes preserve an assigned EasyCrawl logo row when it correspon
 to a source logo placeholder. Downloaded/private artwork, logo settings and grid order
 remain in EasyCrawl. Center credit name formatting follows a standalone name moved
 between source columns.
+
+**Layout → Roles / names (two columns)** explicitly aligns roles rightward in
+the left column and names leftward in the right column, using the normal credit
+gutter and typography. It accepts populated role/name pairs and overrides automatic
+or explicit compact music formatting for the selected rows.
+
+**File → Recent projects** reopens saved crawls with their layouts, artwork and
+timing. **Recent source sheets** separately lists inputs for starting/importing
+credits; source imports do not evict saved projects. Project names omit the file
+extension, and Google Sheets use associated project names where available. Use
+**Recent source sheets → Name current Google Sheet…** to give a link a friendly
+label. Duplicate cached downloads are hidden when the live link is already listed.
+
+For paired Special thanks lists, choose **Name order → Match spreadsheet columns**.
+Left and right entries remain paired on their source rows, including missing cells;
+long entries wrap within their own cell. A lone C-column entry is centered when B
+and D are the name columns. New paired sections default to this mode. Existing
+sections retain their saved mode until changed. Across rows and Down each column
+remain available for rearranging a single-column source list.
+
+The Credits toolbar and right-click menu share the same **Layout** commands.
+Right-click row insertion/deletion is grouped under **Rows**; the older generic
+**List in columns** option is under **Layout → More layouts**. Music and logo grids
+show **Edit music layout…** or **Edit logo grid…**, opening their dedicated editors
+instead of the generic Side by side dialog.
