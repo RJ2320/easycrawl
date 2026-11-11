@@ -11,8 +11,14 @@ class WorkspaceNavigation(QWidget):
         self.window=window
         self.editor=window.sheet_editor
         layout=QVBoxLayout(self);layout.setContentsMargins(10,8,10,4)
-        badge=QLabel('Experimental workspace · local preview')
-        badge.setProperty('role','caption');layout.addWidget(badge)
+        self.setToolTip('Experimental workspace · local preview')
+        buttons=QHBoxLayout()
+        self.format=QPushButton('Text formatting…')
+        self.logos=QPushButton('Edit logo block…')
+        self.shared=QPushButton('Project style…')
+        buttons.addWidget(self.format);buttons.addWidget(self.logos);buttons.addWidget(self.shared)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
         row=QHBoxLayout();row.addWidget(QLabel('Jump to section'))
         self.sections=QComboBox();self.sections.setEditable(True)
         self.sections.setInsertPolicy(QComboBox.NoInsert)
@@ -21,16 +27,6 @@ class WorkspaceNavigation(QWidget):
         self.sections.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.sections.completer().setFilterMode(Qt.MatchContains)
         row.addWidget(self.sections,1);layout.addLayout(row)
-        self.inspector=QGroupBox('Selected cells')
-        body=QVBoxLayout(self.inspector)
-        self.description=QLabel('Select a cell to see its settings.');self.description.setWordWrap(True)
-        body.addWidget(self.description)
-        buttons=QHBoxLayout()
-        self.format=QPushButton('Text formatting…')
-        self.logos=QPushButton('Edit logo block…')
-        self.shared=QPushButton('Project style…')
-        buttons.addWidget(self.format);buttons.addWidget(self.logos);buttons.addWidget(self.shared)
-        body.addLayout(buttons);layout.addWidget(self.inspector)
         self.sections.activated.connect(self.jump)
         self.format.clicked.connect(lambda:self.editor.format_dialog())
         self.logos.clicked.connect(lambda:window._show_logo_layout(self.editor.table.currentRow()+1))
@@ -69,7 +65,7 @@ class WorkspaceNavigation(QWidget):
         selected=table.selectedIndexes()
         rows={index.row() for index in selected}
         styled=any(item['start']<=r<=item['end'] for item in self.window.project.cell_formats for r in rows)
-        self.description.setText(f'{label} · {len(selected)} selected cells\n'+
+        self.format.setToolTip(f'{label} · {len(selected)} selected cells\n'+
             ('Custom text formatting is applied. Other settings inherit the project style.' if styled else
              'Using project text styles. Formatting changes apply to the selected cells.'))
         logo='Logos' in label
