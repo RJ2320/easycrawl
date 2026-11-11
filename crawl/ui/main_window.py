@@ -26,6 +26,7 @@ from .snapshot_dialog import SnapshotDialog
 from .sheet_editor import SheetEditor
 from .music_panel import MusicPanel
 from .logo_workspace import LogoWorkspace
+from .workspace_navigation import WorkspaceNavigation, StyleDisclosure
 from .widgets import LOGO_DEFAULTS, PreviewPanel, StyleEditor, _dspin, _spin, panel_expand_icon, resettable, default_look
 from .worker import RebuildWorker, RenderWorker, SheetFetchWorker, UpdateCheckWorker
 
@@ -302,8 +303,11 @@ class LookPanel(QWidget):
         note.setWordWrap(True)
         il.addWidget(note)
         il.addWidget(self.advanced_toggle)
+        self.style_disclosures=[]
         for ed in self.editors.values():
-            il.addWidget(ed)
+            disclosure=StyleDisclosure(ed)
+            self.style_disclosures.append(disclosure)
+            il.addWidget(disclosure)
             ed.changed.connect(self.changed)
         il.addWidget(spacing)
         il.addWidget(self.advanced_geometry)
@@ -352,6 +356,7 @@ class LookPanel(QWidget):
             w.blockSignals(False)
         for key, ed in self.editors.items():
             ed.load(getattr(look, key))
+        for disclosure in self.style_disclosures:disclosure.refresh()
 
     def _apply(self, *_):
         look = self.project.look
@@ -589,6 +594,8 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.output_panel, "Export")
         tabs.setMinimumWidth(440)
         self.tabs = tabs
+        self.workspace_navigation = WorkspaceNavigation(self)
+        self.sheet_editor.layout().insertWidget(0,self.workspace_navigation)
 
         split = QSplitter()
         self._panel_split = split
@@ -1838,6 +1845,7 @@ class MainWindow(QMainWindow):
         if self.crawl is not None:
             self.crawl = proj.crawl_from_rows(self.project, self.sheet_editor.rows())
             self.sheet_editor.refresh_row_types(self.crawl)
+            self.workspace_navigation.refresh(self.crawl)
         self.build = None
         self.logo_workspace.build = None
         self.logo_workspace.view.set_busy(True)
@@ -1880,6 +1888,7 @@ class MainWindow(QMainWindow):
         if self._dirty or self._debounce.isActive():
             return
         self.build = build
+        self.workspace_navigation.refresh(build.crawl)
         s, t, look = build.solution, self.project.timing, self.project.look
         self.timing_panel.show_result(build)
         self.sheet_editor.set_findings(build.findings)
