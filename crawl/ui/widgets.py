@@ -10,13 +10,40 @@ from PIL import Image
 from PySide6.QtCore import QPointF, QRect, QRectF, QSize, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap, QOpenGLContext, QOffscreenSurface
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame,
                                QGroupBox, QHBoxLayout, QLabel, QMenu, QPushButton, QSlider, QSpinBox,
                                QToolButton, QToolTip, QVBoxLayout, QWidget, QStyle)
 
 from .. import fonts
 from . import theme
 from ..look import Look, TextStyle
+
+
+class ColorPicker(QPushButton):
+    """Opaque RGB color with a swatch and editable hex value in the built-in picker."""
+    changed = Signal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.set_value((1.0,1.0,1.0))
+        self.clicked.connect(self._choose)
+
+    def value(self):
+        return self._color
+
+    def set_value(self, value):
+        self._color = tuple(value)
+        color = QColor.fromRgbF(*self._color)
+        swatch = QPixmap(18,18);swatch.fill(color)
+        self.setIcon(QIcon(swatch))
+        self.setText(color.name().upper())
+        self.setAccessibleName('Font color ' + color.name().upper())
+
+    def _choose(self):
+        color = QColorDialog.getColor(QColor.fromRgbF(*self._color),self,'Font color',QColorDialog.DontUseNativeDialog)
+        if color.isValid():
+            self.set_value((color.redF(),color.greenF(),color.blueF()))
+            self.changed.emit(self.value())
 
 
 # --------------------------------------------------------------------------- #

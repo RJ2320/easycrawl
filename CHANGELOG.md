@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.16
+
+- Add a font color picker with RGB and hex entry to manual text formatting.
+- Preserve per-cell colors in project files, undo, source updates, preview and color exports.
+- Let individual text colors return to the section default without removing other styling.
+
 ## 0.3.15
 
 - Add left, center and right alignment for names-only rows, retaining shared name typography for paired names.

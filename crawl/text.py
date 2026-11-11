@@ -81,7 +81,9 @@ def face_variant(spec: str, bold=None, italic=None) -> str:
 
 
 def override_style(style: TextStyle, options) -> TextStyle:
-    values = {key: options[key] for key in ('font','size','leading','tracking','bold','italic','uppercase') if key in options}
+    values = {key: options[key] for key in ('font','size','leading','tracking','bold','italic','uppercase','color') if key in options}
+    if 'color' in values:
+        values['color'] = tuple(values['color'])
     if not values:
         return style
     if 'size' in values and 'leading' not in values:

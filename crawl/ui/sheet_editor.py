@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 
 from .. import arrangements, ingest
 from .arrangement_table import ArrangementTable
-from .widgets import _spin, panel_expand_icon, resettable, default_look, FontPicker
+from .widgets import _spin, panel_expand_icon, resettable, default_look, FontPicker, ColorPicker
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
@@ -828,7 +828,7 @@ class SheetEditor(QWidget):
 
     def apply_cell_format(self, options, *, cells=None, reset=False):
         from .. import text
-        allowed = {'font','size','leading','tracking','bold','italic','uppercase','alignment'}
+        allowed = {'font','size','leading','tracking','bold','italic','uppercase','alignment','color'}
         if set(options) - allowed:
             raise ValueError('Unknown text formatting option.')
         for key in ('size','leading'):
@@ -836,6 +836,13 @@ class SheetEditor(QWidget):
                 raise ValueError('Font size and line spacing must be between 1 and 2000 pixels.')
         if options.get('alignment') not in (None,'left','center','right'):
             raise ValueError('Choose left, center or right alignment.')
+        if options.get('color') is not None:
+            import math
+            color = options['color']
+            if (not isinstance(color,(list,tuple)) or len(color)!=3
+                    or any(not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<=value<=1 for value in color)):
+                raise ValueError('Choose a valid RGB font color.')
+            options = dict(options,color=list(color))
         cells = self._text_cells() if cells is None else set(cells)
         rows = self.rows()
         cells = {(row,col) for row,col in cells if 0<=row<len(rows) and 0<=col<3
@@ -902,10 +909,11 @@ class SheetEditor(QWidget):
         font=FontPicker();font.set_value(current[0].get('font',base.font))
         size=_spin(1,2000,' px');size.setValue(current[0].get('size',base.size))
         leading=_spin(1,2000,' px');leading.setValue(current[0].get('leading',base.leading))
+        color=ColorPicker();color.set_value(current[0].get('color',base.color))
         alignment=QComboBox()
         for label,value in [('Left','left'),('Center','center'),('Right','right')]:alignment.addItem(label,value)
         alignment.setCurrentIndex(alignment.findData(current[0].get('alignment','center')))
-        for key,label,widget in [('font','Font',font),('size','Font size',size),('leading','Line spacing',leading),('alignment','Alignment',alignment)]:
+        for key,label,widget in [('font','Font',font),('size','Font size',size),('color','Font color',color),('leading','Line spacing',leading),('alignment','Alignment',alignment)]:
             widget.setObjectName('format_' + key)
             enabled=QCheckBox(label)
             enabled.setChecked(all(key in item and item[key]==current[0].get(key) for item in current))
@@ -926,7 +934,7 @@ class SheetEditor(QWidget):
         def accept():
             options={}
             for key,(enabled,widget) in controls.items():
-                options[key] = (widget.value() if key in ('font','size','leading') else widget.currentData()) if enabled is None or enabled.isChecked() else None
+                options[key] = (widget.value() if key in ('font','size','leading','color') else widget.currentData()) if enabled is None or enabled.isChecked() else None
             try:
                 self.apply_cell_format(options,cells=cells)
             except (ValueError,FontError) as error:

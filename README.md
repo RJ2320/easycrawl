@@ -513,11 +513,14 @@ uses the font family's bold face and does not edit the Google Sheet or saved cre
 text. The preview and exports include the override.
 
 **Layout → Text formatting → Format selected cells…** also overrides font, size,
-line spacing, left/center/right alignment, italic and uppercase for selected text
+font color, line spacing, left/center/right alignment, italic and uppercase for selected text
 cells. Check an option to override it; unchecked options inherit the section style.
 Size changes scale line spacing unless line spacing is overridden too. These local
 settings do not change other headings or names. Use **Heading font and styling…**
 in the Special thanks dialog to format just that section's heading.
+The color picker includes a swatch, RGB controls and hex entry. Uncheck **Font color**
+to inherit the section color again. Color applies to previews and color exports;
+luminance-only panels remain monochrome mattes.
 
 **File → Google Sheet is master for credit text** is enabled by default. Refresh
 compares the full current project text against the Google Sheet, including previously

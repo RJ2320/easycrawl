@@ -203,3 +203,55 @@ def test_custom_font_file_is_collected_and_saved_portably(tmp_path):
     loaded=Project.load(str(path))
     assert Path(loaded.cell_formats[0]['font']).read_bytes()==b'font asset'
     assert loaded.snapshots[0]['state']['cell_formats']==loaded.cell_formats
+
+
+def test_font_color_saves_undoes_and_renders_rgb_without_changing_text(tmp_path):
+    import numpy as np
+    from crawl.render import render_panel
+    rows=[['','SPECIAL THANKS',''],['','','Avery Morgan']]
+    p=Project();e=SheetEditor(p);e.load(rows)
+    e.table.setCurrentCell(0,1);e.apply_cell_format(dict(color=(1.0,0.0,0.0)))
+    result=layout(load_crawl(p),p.look)
+    heading=result.lines[0]
+    assert heading.text_style.color==(1.0,0.0,0.0)
+    assert result.lines[1].text_style is None and e.rows()==rows and p.rows==rows
+    pixels=np.array(render_panel(result,p.look,0,heading.y+20))
+    ink=pixels[:,:,3]>0
+    assert pixels[:,:,0][ink].max()>0
+    assert pixels[:,:,1][ink].max()==0 and pixels[:,:,2][ink].max()==0
+    path=tmp_path/'color.crawl.json';p.save(str(path))
+    assert layout(load_crawl(Project.load(str(path))),p.look).lines[0].text_style.color==(1.0,0.0,0.0)
+    e.undo();assert not p.cell_formats
+    e.redo();assert p.cell_formats[0]['color']==[1.0,0.0,0.0]
+    e.apply_cell_format(dict(color=None))
+    assert not p.cell_formats
+    e.close()
+
+
+def test_font_color_picker_applies_selected_color(monkeypatch):
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QDialog,QCheckBox,QColorDialog,QDialogButtonBox
+    from crawl.ui.widgets import ColorPicker
+    p=Project();e=SheetEditor(p);e.load([['','HEADING','']]);e.table.setCurrentCell(0,1)
+    monkeypatch.setattr(QColorDialog,'getColor',lambda *args:QColor('#2878C8'))
+    def edit(dialog):
+        check=next(check for check in dialog.findChildren(QCheckBox) if check.text()=='Font color')
+        check.setChecked(True)
+        picker=dialog.findChild(ColorPicker,'format_color');picker.click()
+        assert picker.text()=='#2878C8'
+        dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Ok).click()
+        return 1
+    monkeypatch.setattr(QDialog,'exec',edit)
+    e.format_dialog()
+    assert p.cell_formats[0]['color']==pytest.approx([40/255,120/255,200/255],abs=0.0001)
+    e.close()
+
+
+@pytest.mark.parametrize('color',[(1,0),(2,0,0),(float('nan'),0,0),'red'])
+def test_invalid_font_color_does_not_change_project(color):
+    p=Project();e=SheetEditor(p);e.load([['','HEADING','']]);e.table.setCurrentCell(0,1)
+    before=e._state()
+    with pytest.raises(ValueError,match='RGB'):
+        e.apply_cell_format(dict(color=color))
+    assert e._state()==before
+    e.close()

@@ -95,6 +95,8 @@ class ArrangementDelegate(QStyledItemDelegate):
             option.font.setWeight(QFont.Bold if manual['bold'] else QFont.Normal)
         if 'italic' in manual:
             option.font.setItalic(manual['italic'])
+        if 'color' in manual:
+            option.palette.setColor(option.palette.ColorRole.Text,QColor.fromRgbF(*manual['color']))
         if 'alignment' in manual:
             option.displayAlignment = {'left':Qt.AlignLeft,'center':Qt.AlignHCenter,'right':Qt.AlignRight}[manual['alignment']] | Qt.AlignVCenter
 
