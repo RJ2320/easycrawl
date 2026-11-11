@@ -82,8 +82,13 @@ class ArrangementDelegate(QStyledItemDelegate):
         override = self.table().override_at(index.row())
         if override and override['kind'].startswith('names_'):
             option.font.setWeight(QFont.Normal)
-            option.displayAlignment = {'names_left': Qt.AlignLeft, 'names_center': Qt.AlignHCenter,
-                                       'names_right': Qt.AlignRight}[override['kind']] | Qt.AlignVCenter
+            if override['kind']=='names_inward':
+                columns=[column for column in range(3) if self.table().item(index.row(),column)
+                         and self.table().item(index.row(),column).text()]
+                align=(Qt.AlignRight if index.column()==columns[0] else Qt.AlignLeft) if len(columns)==2 else Qt.AlignHCenter
+            else:
+                align={'names_left':Qt.AlignLeft,'names_center':Qt.AlignHCenter,'names_right':Qt.AlignRight}[override['kind']]
+            option.displayAlignment=align | Qt.AlignVCenter
         manual = next((item for item in self.table().project.cell_formats
                        if item['start'] <= index.row() <= item['end'] and item['column'] == index.column()),{})
         if 'font' in manual:
@@ -110,6 +115,8 @@ class ArrangementDelegate(QStyledItemDelegate):
         tint = None
         if severity:
             tint = theme.color(theme.SEVERITY[severity], 62 if severity == "error" else 38)
+        elif row in table.spacer_rows:
+            tint = theme.color(theme.ACCENT,40)
         elif table.arrangement_at(row):
             tint = theme.color(theme.ACCENT, 20)
         elif table.override_at(row):
@@ -199,6 +206,7 @@ class ArrangementTable(QTableWidget):
     def __init__(self, project, parent=None):
         super().__init__(0, 3, parent)
         self.project = project
+        self.spacer_rows = set()
         self.error_cells = set()             # (row, col) with a finding
         self.error_severity = {}             # (row, col) → "error" | "warning" | "info"
         self.tooltip_for = lambda row, col: ""

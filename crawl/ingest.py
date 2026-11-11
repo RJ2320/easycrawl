@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
-from .model import Crawl, Group, Header, Legal, ListBlock, Logo, LogoRow, RolePair
+from .model import Crawl, Group, Header, Legal, ListBlock, Logo, LogoRow, RolePair, Spacer
 
 COL_B, COL_C, COL_D = 1, 2, 3
 
@@ -348,13 +348,14 @@ def _xlsx_rows(ws) -> List[List[str]]:
 #   list     set in list columns even if the run is short
 #   center   one centred line per row
 LAYOUT_KINDS = ("roles", "list", "center", "center_name", "legal", "thanks",
-                "names_left", "names_center", "names_right", "heading")
+                "names_left", "names_center", "names_right", "names_inward", "heading")
 
 
 def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_before=(),
-          kinds: Optional[dict] = None, music_blocks=(), thanks_sections=(), ignore_blank_after_header=False, hidden_rows=()) -> Crawl:
+          kinds: Optional[dict] = None, music_blocks=(), thanks_sections=(), ignore_blank_after_header=False, hidden_rows=(), spacer_rows=()) -> Crawl:
+    spacer_rows=set(spacer_rows)
     hidden = set(hidden_rows) | set(getattr(rows, 'hidden_rows', ()))
-    visible = [i for i, row in enumerate(rows) if i not in hidden or any(_cell(value) for value in row)]
+    visible = [i for i, row in enumerate(rows) if i not in hidden or i in spacer_rows or any(_cell(value) for value in row)]
     if len(visible) != len(rows):
         from bisect import bisect_left, bisect_right
         indices = {old: new for new, old in enumerate(visible)}
@@ -372,7 +373,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
                       break_before={bisect_left(visible, edge) for edge in break_before},
                       kinds={indices[i]: kind for i,kind in (kinds or {}).items() if i in indices},
                       music_blocks=remap(music_blocks), thanks_sections=remap(thanks_sections),
-                      ignore_blank_after_header=ignore_blank_after_header)
+                      ignore_blank_after_header=ignore_blank_after_header,
+                      spacer_rows={indices[i] for i in spacer_rows if i in indices})
         for block in crawl.blocks():
             if isinstance(block, ListBlock):
                 source_rows = block.source_rows or [block.row+i for i in range(len(block.names))]
@@ -414,6 +416,10 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
         rownum = i + 1
 
         if not (b or c or d):
+            if i in spacer_rows:
+                group.blocks.append(Spacer(row=rownum))
+                i += 1
+                continue
             # Keep source row numbers and text intact; only suppress a group
             # break directly after a section heading. Song spacing is separate.
             if (ignore_blank_after_header and group.blocks
@@ -475,6 +481,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
                                           column_gap=section.get('column_gap'), flow=flow,
                                           left_alignment=section.get('left_alignment','center'),
                                           right_alignment=section.get('right_alignment','center'),
+                                          sheet_columns=[column for column in range(3) if any(rows[r][column]
+                                              for r in range(section['start']+bool(section.get('title',True)),min(n,section['end']+1)))] if flow=='sheet' else None,
                                           source_rows=source_rows if flow=='sheet' else None,
                                           source_columns=source_columns if flow=='sheet' else None))
             continue

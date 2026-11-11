@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.19
+
+- Add Face center for names-only rows, using the normal role/name positions while retaining name typography on both sides.
+- Recover the full Special thanks section when a names-only layout has separated its names from the heading.
+- Add a one-click role/name alignment preset in Special thanks settings.
+- Mark selected empty rows as explicit visible spacing, with a highlighted row and a separate gap for every marked row.
+- Save spacing marks with projects and preserve them through undo, row edits and source updates without hiding populated credits.
+
 ## 0.3.18
 
 - Import EPS logos through artwork pickers and My logos with automatic high-resolution PNG conversion and original EPS retention.

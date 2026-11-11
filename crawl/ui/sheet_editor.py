@@ -31,6 +31,7 @@ LAYOUT_LABELS = {
     'names_left': 'Names only — left aligned',
     'names_center': 'Names only — centered',
     'names_right': 'Names only — right aligned',
+    'names_inward': 'Names only — facing the center gap',
 }
 LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles / names (two columns)', 'list': 'List in columns',
                 'heading': 'Section heading', 'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
@@ -299,13 +300,13 @@ class SheetEditor(QWidget):
 
     def _ranges(self):
         """Every list of {start, end} row ranges that must follow inserted and deleted rows."""
-        return (self.project.arrangements, self.project.overrides, self.project.cell_formats, self.project.import_notes, self.project.music_blocks, self.project.hidden_rows,
+        return (self.project.arrangements, self.project.overrides, self.project.cell_formats, self.project.spacer_rows, self.project.import_notes, self.project.music_blocks, self.project.hidden_rows,
                 self.table.change_marks)
 
     def _state(self):
         p = self.project
         return json.dumps([self.rows(), p.arrangements, p.overrides, p.logos, p.logo_settings,
-                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks, p.hidden_rows, p.base_hidden_rows, p.cell_formats])
+                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks, p.hidden_rows, p.base_hidden_rows, p.cell_formats, p.spacer_rows])
 
     def commit_undo(self):
         """Record a step if anything undoable changed since the last one."""
@@ -336,12 +337,13 @@ class SheetEditor(QWidget):
             self._restore(self._redo.pop())
 
     def _restore(self, state):
-        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks, hidden_rows, base_hidden_rows, cell_formats = json.loads(state)
+        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks, hidden_rows, base_hidden_rows, cell_formats, spacer_rows = json.loads(state)
         current = (self.table.currentRow(), self.table.currentColumn())
         p = self.project
         p.arrangements[:] = arrangements_
         p.overrides[:] = overrides
         p.cell_formats[:] = cell_formats
+        p.spacer_rows[:] = spacer_rows
         p.music_blocks[:] = music_blocks
         p.hidden_rows[:] = hidden_rows
         p.base_hidden_rows[:] = base_hidden_rows
@@ -485,7 +487,7 @@ class SheetEditor(QWidget):
         self.table.blockSignals(True)
         for _ in range(count):
             for ranges in self._ranges():
-                if ranges is self.project.hidden_rows:
+                if ranges is self.project.hidden_rows or ranges is self.project.spacer_rows:
                     ingest.insert_hidden_row(ranges, at)
                 else:
                     arrangements.insert_row(ranges, at)
@@ -530,7 +532,7 @@ class SheetEditor(QWidget):
         if not labels:
             row = row + 1 if row >= 0 else len(rows)
             for ranges in self._ranges():
-                if ranges is self.project.hidden_rows:
+                if ranges is self.project.hidden_rows or ranges is self.project.spacer_rows:
                     ingest.insert_hidden_row(ranges, row)
                 else:
                     arrangements.insert_row(ranges, row)
@@ -773,6 +775,9 @@ class SheetEditor(QWidget):
         menu.addAction('Insert rows above…',lambda:self.insert_rows_dialog(above=True))
         menu.addAction('Insert rows below…',lambda:self.insert_rows_dialog(above=False))
         menu.addSeparator()
+        spacing=menu.addAction('Make empty rows visible as spacing',lambda:self.set_spacer_rows(True))
+        clear_spacing=menu.addAction('Clear explicit spacing',lambda:self.set_spacer_rows(False))
+        menu.addSeparator()
         delete=menu.addAction('Delete row',self.delete_rows)
         def update():
             count=max(1,len(self._selected_rows()))
@@ -780,7 +785,21 @@ class SheetEditor(QWidget):
             above.setText(f'Insert {label} above')
             below.setText(f'Insert {label} below')
             delete.setText(f'Delete {label}')
+            rows=self.rows();selected=self._selected_rows();marked=ingest.hidden_indices(self.project.spacer_rows)
+            spacing.setEnabled(any(not any(rows[row]) and row not in marked for row in selected))
+            clear_spacing.setEnabled(bool(marked.intersection(selected)))
         menu.aboutToShow.connect(update)
+
+    def set_spacer_rows(self, enabled):
+        marked=ingest.hidden_indices(self.project.spacer_rows)
+        selected=self._selected_rows();rows=self.rows()
+        if enabled:
+            marked.update(row for row in selected if not any(rows[row]))
+        else:
+            marked.difference_update(selected)
+        self.project.spacer_rows[:]=ingest.hidden_ranges(ingest.SheetRows(hidden_rows=marked))
+        self._changed()
+        self._apply_filter()
 
     def _populate_layout_menu(self, menu, context=False):
         show_types=menu.addAction('Show row types')
@@ -794,7 +813,7 @@ class SheetEditor(QWidget):
             action=menu.addAction(label,lambda checked=False,k=kind:self._apply_layout_to_selection(k))
             action.setCheckable(True);action.setData(kind)
         names = menu.addMenu('Names only / alignment')
-        for alignment, label in [('left', 'Left'), ('center', 'Center'), ('right', 'Right')]:
+        for alignment, label in [('left', 'Left'), ('center', 'Center'), ('right', 'Right'),('inward','Face center (like roles / names)')]:
             kind = 'names_' + alignment
             action = names.addAction(label, lambda checked=False, k=kind: self._apply_layout_to_selection(k))
             action.setCheckable(True); action.setData(kind)
@@ -863,9 +882,11 @@ class SheetEditor(QWidget):
         from ..project import crawl_from_rows
         from .row_types import describe_rows
         from . import theme
+        rows=self.rows()
         if crawl is None:
-            crawl=crawl_from_rows(self.project,self.rows())
+            crawl=crawl_from_rows(self.project,rows)
         self._row_types=describe_rows(crawl,self.project,self.table.rowCount())
+        self.table.spacer_rows={row for row in ingest.hidden_indices(self.project.spacer_rows) if 0<=row<len(rows) and not any(rows[row])}
         header=self.table.verticalHeader()
         width=QFontMetrics(header.font()).horizontalAdvance('9999 · Role / name * ✓')+18 if self._show_row_types else QFontMetrics(header.font()).horizontalAdvance(str(max(1,self.table.rowCount())))+18
         header.setFixedWidth(width)
@@ -1134,6 +1155,8 @@ class SheetEditor(QWidget):
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if not occupied or any(ingest.logo_labels(value) for row in occupied for value in row if value):
                 raise ValueError('Select cells containing names. Logo rows keep their own layout.')
+            if kind=='names_inward' and any(sum(bool(value) for value in row)>2 for row in occupied):
+                raise ValueError('Face center supports one centered name or two names on opposite sides of the gap.')
         if kind == 'roles':
             occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
             if (not occupied or any(ingest.logo_labels(b or c) or (c and d)
@@ -1316,8 +1339,27 @@ class SheetEditor(QWidget):
         selected=self._selected_rows()
         row=self.table.currentRow()
         current=self.override_at(row if row>=0 else (selected[0] if selected else -1))
+        # Names-only overrides can split the names away from their thanks heading.
+        # Recover that adjacent section when opening its editor from either part.
+        names=current if current and current['kind'].startswith('names_') else None
+        if names and len(selected)<=1:
+            heading=next((item for item in self.project.overrides if item['kind']=='thanks'
+                          and item.get('title',True) and item['end']+1==names['start']),None)
+            if heading:
+                current=dict(heading,end=names['end'])
         current=current if current and current['kind']=='thanks' else None
         if current and len(selected)<=1:
+            tail=next((item for item in self.project.overrides if item['start']==current['end']+1
+                       and item['kind'].startswith('names_')),None)
+            if tail:
+                current=dict(current,end=tail['end'])
+            related_names=names or tail
+            if related_names:
+                alignment=related_names['kind'].removeprefix('names_')
+                if alignment=='inward':
+                    current=dict(current,left_alignment='right',right_alignment='left',column_gap=self.project.look.gutter)
+                elif alignment in ('left','center','right'):
+                    current=dict(current,left_alignment=alignment,right_alignment=alignment)
             selected=list(range(current['start'],current['end']+1))
         if not selected or selected!=list(range(selected[0],selected[-1]+1)):
             QMessageBox.information(self,'Select a thanks section','Select one continuous range containing the heading and names, or just the names.')
@@ -1370,6 +1412,14 @@ class SheetEditor(QWidget):
         form.addRow('Space between columns',resettable(gap,lambda:default_look(self.project).list_column_gap,'thanks column gap'))
         form.addRow('Left name column alignment',left_alignment)
         form.addRow('Right name column alignment',right_alignment)
+        face_center=QPushButton('Use role / name alignment')
+        face_center.setToolTip('Right-align the left names and left-align the right names using the same center gap as ordinary credits.')
+        def use_role_alignment():
+            left_alignment.setCurrentIndex(left_alignment.findData('right'))
+            right_alignment.setCurrentIndex(right_alignment.findData('left'))
+            gap.setValue(self.project.look.gutter)
+        face_center.clicked.connect(use_role_alignment)
+        form.addRow('',face_center)
         heading_format=QPushButton('Heading font and styling…')
         heading_format.setEnabled(title.isChecked());title.toggled.connect(heading_format.setEnabled)
         def format_heading():
@@ -1575,8 +1625,9 @@ class SheetEditor(QWidget):
         only_changed = self.changes_chip.isChecked() and bool(self.table.change_marks)
         problem_rows = {f.row - 1 for f in self.findings}
         source_hidden = ingest.hidden_indices(self.project.hidden_rows)
+        explicit_spacing=ingest.hidden_indices(self.project.spacer_rows)
         for row in range(self.table.rowCount()):
-            hidden = (row in source_hidden and not any(self.table.item(row,c) and self.table.item(row,c).text() for c in range(3))) or \
+            hidden = (row in source_hidden and row not in explicit_spacing and not any(self.table.item(row,c) and self.table.item(row,c).text() for c in range(3))) or \
                      (only_problems and row not in problem_rows) or \
                      (only_changed and not self.table.changed_at(row))
             if self.table.isRowHidden(row) != hidden:
@@ -1636,6 +1687,10 @@ class SheetEditor(QWidget):
         self.table.change_marks[:] = []
         for ranges in (self.project.arrangements, self.project.overrides, self.project.cell_formats, self.project.import_notes, self.project.music_blocks):
             changes.replay(ranges, shifts)
+        for shift in shifts:
+            arrangements.delete_rows(self.project.spacer_rows,shift.removed)
+            for k in range(shift.inserted):
+                ingest.insert_hidden_row(self.project.spacer_rows,shift.inserted_at+k)
         # What each marked row used to say, for its tooltip.
         ordered = sorted(accepted, key=lambda c: (c.start, c.end))
         with_new = [c for c in ordered if c.new]

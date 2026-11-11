@@ -98,3 +98,43 @@ def test_thanks_dialog_applies_each_column_alignment(monkeypatch):
     e.thanks_dialog()
     assert p.overrides[0]['left_alignment']=='right' and p.overrides[0]['right_alignment']=='left'
     e.close()
+
+
+def test_names_only_face_center_uses_role_name_positions_and_name_style():
+    p=Project();e=SheetEditor(p)
+    e.load([['Avery Morgan','','Robin Chen'],['','Jamie Reed','']])
+    e.apply_layout([0,1],'names_inward')
+    lines=layout(load_crawl(p),p.look).lines
+    assert [(line.style,line.anchor,line.x) for line in lines]==[
+        ('name','rs',p.look.center_x-p.look.gutter//2),
+        ('name','ls',p.look.center_x+p.look.gutter//2),
+        ('name','ms',p.look.center_x)]
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QStyleOptionViewItem
+    for row,column,alignment in [(0,0,Qt.AlignRight),(0,2,Qt.AlignLeft),(1,1,Qt.AlignHCenter)]:
+        option=QStyleOptionViewItem()
+        e.table.itemDelegate().initStyleOption(option,e.table.model().index(row,column))
+        assert option.displayAlignment & alignment
+    e.close()
+
+
+@pytest.mark.parametrize('selected_row',[0,1])
+def test_thanks_editor_recovers_names_split_from_heading(monkeypatch,selected_row):
+    from PySide6.QtWidgets import QDialog,QComboBox,QDialogButtonBox
+    p=Project();e=SheetEditor(p)
+    e.load([['','Special Thanks',''],['Avery Morgan','','Robin Chen'],['Alex Taylor','','Jamie Reed']])
+    e.apply_layout([0,1,2],'thanks',title=True,columns=2,flow='sheet')
+    e.apply_layout([1,2],'names_inward')
+    assert p.overrides[0]['end']==0
+    e.table.setCurrentCell(selected_row,0)
+    def accept(dialog):
+        assert dialog.findChild(QComboBox,'thanks_left_alignment').currentData()=='right'
+        assert dialog.findChild(QComboBox,'thanks_right_alignment').currentData()=='left'
+        dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Ok).click()
+        return 1
+    monkeypatch.setattr(QDialog,'exec',accept)
+    e.thanks_dialog()
+    assert len(p.overrides)==1 and p.overrides[0]['start']==0 and p.overrides[0]['end']==2
+    lines=[line for line in layout(load_crawl(p),p.look).lines if line.row==2]
+    assert [(line.anchor,line.x) for line in lines]==[('rs',p.look.center_x-p.look.gutter//2),('ls',p.look.center_x+p.look.gutter//2)]
+    e.close()

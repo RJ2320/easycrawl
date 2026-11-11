@@ -1,5 +1,5 @@
 """Readable spreadsheet row categories derived from the actual parsed crawl."""
-from ..model import Header, RolePair, ListBlock, Legal, LogoRow
+from ..model import Header, RolePair, ListBlock, Legal, LogoRow, Spacer
 
 
 def describe_rows(crawl, project, count):
@@ -9,7 +9,9 @@ def describe_rows(crawl, project, count):
     styled = {row for item in project.cell_formats for row in range(item['start'],item['end']+1)}
     for block in crawl.blocks():
         rows = [block.row-1]
-        if isinstance(block,Header):
+        if isinstance(block,Spacer):
+            label,description = 'Spacing','Explicit visible spacing — adds one blank-row gap'
+        elif isinstance(block,Header):
             label,description = ('Song title','Music song title') if block.level==2 else ('Heading','Section heading')
         elif isinstance(block,RolePair):
             if block.name_cells is not None or block.center_names:
@@ -32,7 +34,7 @@ def describe_rows(crawl, project, count):
             continue
         for row in rows:
             if 0<=row<count:
-                manual = row in explicit or row in music
+                manual = row in explicit or row in music or isinstance(block,Spacer)
                 detail = description + (' — marked manually' if manual else ' — automatic')
                 if row in styled:
                     detail += '\n* Manual font / text styling is applied to this row.'

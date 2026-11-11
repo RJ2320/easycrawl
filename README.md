@@ -602,3 +602,19 @@ instead of the generic Side by side dialog.
 export. The main export command follows the selected codec or PNG sequence format,
 and Cancel Export is available only while an export is running. Logo artwork is
 managed in Logos and the preview inspectors, not in Export settings.
+
+**Layout → Names only / alignment → Face center (like roles / names)** places
+the left names at the normal role edge and the right names at the normal name
+edge, keeping name typography on both sides. A single name stays centered. In
+Special thanks settings, **Use role / name alignment** sets the same alignment
+and center gap. Opening Special thanks from a heading or adjacent names-only
+block recovers the complete section for editing.
+
+Select empty rows and choose **Rows → Make empty rows visible as spacing** to
+reserve one blank-row gap per selected empty row. Marked rows have a blue tint
+and a **Spacing ✓** label; consecutive marked rows add separate gaps. This explicit
+choice also overrides source-hidden status and the option to ignore blanks below
+headings. **Clear explicit spacing** restores normal blank-row handling. The gap
+height follows Look's blank-row spacing and runtime scaling. Text rows are never
+hidden or emptied by this action. Marks save with the project, support undo and
+follow row insertions, deletions and source updates.

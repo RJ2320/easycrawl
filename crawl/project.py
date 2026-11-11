@@ -82,6 +82,7 @@ class Project:
     # inclusive rows and kind in ingest.LAYOUT_KINDS (roles | list | center).
     overrides: List[dict] = field(default_factory=list)
     cell_formats: List[dict] = field(default_factory=list)  # per-cell text style and alignment overrides
+    spacer_rows: List[dict] = field(default_factory=list)  # explicit empty-row spacing ranges
     music_blocks: List[dict] = field(default_factory=list)  # explicit song ranges; text stays in its source cells
 
     # Findings the user has looked at and accepted, by lint.Finding.key.
@@ -103,7 +104,7 @@ class Project:
 
     _SIMPLE = ("source", "source_url", "google_sheet_master", "sheet", "columns", "start_row", "list_columns", "max_panel",
                "output_dir", "basename", "timestamp_output", "version_output", "codec", "alpha", "write_fusion", "write_report", "fmt", "logos", "logo_settings", "rows", "arrangements",
-               "overrides", "cell_formats", "music_blocks", "dismissed", "import_notes", "base_rows", "hidden_rows", "base_hidden_rows", "snapshots", "import_history")
+               "overrides", "cell_formats", "spacer_rows", "music_blocks", "dismissed", "import_notes", "base_rows", "hidden_rows", "base_hidden_rows", "snapshots", "import_history")
 
     def record_import(self, rows, action="Imported", applied=0, skipped=0, deduplicate=False):
         """Keep source provenance; opening a saved project is not a new import."""
@@ -356,6 +357,7 @@ def crawl_from_rows(project: Project, rows) -> Crawl:
                          break_before=boundaries, kinds=kinds, music_blocks=project.music_blocks,
                          ignore_blank_after_header=project.look.ignore_blank_after_header,
                          hidden_rows=ingest.hidden_indices(project.hidden_rows),
+                         spacer_rows=ingest.hidden_indices(project.spacer_rows),
                          thanks_sections=[item for item in project.overrides if item["kind"]=="thanks"])
     crawl.arrangements = copy.deepcopy(project.arrangements)
     crawl.cell_formats = copy.deepcopy(project.cell_formats)

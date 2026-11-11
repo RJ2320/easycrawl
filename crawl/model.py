@@ -46,6 +46,7 @@ class ListBlock:
     source_columns: Optional[List[int]] = None  # B/C/D placement for match-sheet layouts
     left_alignment: str = 'center'
     right_alignment: str = 'center'
+    sheet_columns: Optional[List[int]] = None  # preserve column slots across explicit spacer rows
 
     def name_row(self, index):
         return self.source_rows[index] if self.source_rows is not None else self.row + index
@@ -81,7 +82,13 @@ class Legal:
     row: int = 0
 
 
-Block = Union[Header, RolePair, ListBlock, LogoRow, Legal]
+@dataclass
+class Spacer:
+    """An explicitly marked empty source row; reserves one blank-row gap."""
+    row: int = 0
+
+
+Block = Union[Header, RolePair, ListBlock, LogoRow, Legal, Spacer]
 
 
 @dataclass

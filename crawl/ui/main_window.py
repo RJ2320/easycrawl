@@ -271,7 +271,7 @@ class LookPanel(QWidget):
         spacing = QGroupBox("Between sections")
         form = QFormLayout(spacing)
         form.addRow("Space for a blank spreadsheet row", with_reset(self.group_gap, "blank-row spacing"))
-        self.group_gap.setToolTip("Each blank source row adds this much vertical space. Fit runtime may scale it.")
+        self.group_gap.setToolTip("Spacing for normal group breaks and each explicitly marked spacing row. Consecutive marked rows add separately. Fit runtime may scale it.")
 
         self.advanced_toggle = QCheckBox("Show advanced settings")
         self.advanced_geometry = QGroupBox("Advanced layout and rendering")
@@ -1321,6 +1321,7 @@ class MainWindow(QMainWindow):
         self.project.arrangements[:] = []
         self.project.overrides[:] = []
         self.project.cell_formats[:] = []
+        self.project.spacer_rows[:] = []
         self.project.music_blocks[:] = []
         self.project.import_notes[:] = []
         self.project.base_rows = None
@@ -1355,6 +1356,7 @@ class MainWindow(QMainWindow):
             self.project.arrangements[:] = []
             self.project.overrides[:] = []
             self.project.cell_formats[:] = []
+            self.project.spacer_rows[:] = []
             self.project.music_blocks[:] = []
         if fresh:
             # What the client sent, kept so a revised sheet can be merged in later.
