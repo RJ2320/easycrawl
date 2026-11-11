@@ -41,6 +41,17 @@ def test_music_spacing_and_centering():
         assert abs(layout.layout(crawl, look, scale).content_height - (fixed + flexible * scale)) <= 3
 
 
+def test_music_preserves_fractional_font_advances(monkeypatch):
+    measure=text.width
+    def fractional(style,value,scale=1.0):
+        return measure(style,value,scale)+(.375 if value=='Written by' else 0)
+    monkeypatch.setattr(text,'width',fractional)
+    look=Look();result=layout.layout(ingest.parse(ROWS),look)
+    role=next(line for line in result.lines if line.text=='Written by')
+    name=next(line for line in result.lines if line.text=='Alice')
+    assert abs(name.x-role.x-text.width(look.music_role,role.text)-look.music_inline_gap)<1e-9
+
+
 def test_italic_runs_draw_without_markers_and_wrap():
     look = Look()
     look.width = 1000

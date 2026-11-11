@@ -28,7 +28,7 @@ LOGO_ROW_MAX = 0.8   # widest a logo row may be, as a fraction of the frame widt
 class Line:
     text: str
     style: str      # key in Look.styles()
-    x: int          # anchor x
+    x: float        # retain fractional font advances for exact horizontal gaps
     y: int          # baseline y
     anchor: str     # 'ls' left / 'ms' middle / 'rs' right (Pillow anchors)
     row: int = 0
@@ -133,7 +133,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
             anchor = {'left': 'ls', 'center': 'ms', 'right': 'rs'}[manual_alignment]
         L.row_positions.setdefault(row, baseline)
         target = "header" if isinstance(b, Header) else "role" if isinstance(b, Legal) else style.removeprefix("music_")
-        L.lines.append(Line(text.display_text(st, s), style, round(x), baseline, anchor, row, target,
+        L.lines.append(Line(text.display_text(st, s), style, x, baseline, anchor, row, target,
                             st if st != base_styles[style] else None))
         bottom = max(bottom, baseline + descent)
 

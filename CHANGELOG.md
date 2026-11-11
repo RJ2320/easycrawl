@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.20
+
+- Preserve fractional horizontal font advances so music labels and names retain exact spacing across platforms.
+- Fix the Linux release check that blocked installer builds when a fallback font used fractional character widths.
+
 ## 0.3.19
 
 - Add Face center for names-only rows, using the normal role/name positions while retaining name typography on both sides.
