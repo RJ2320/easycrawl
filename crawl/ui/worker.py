@@ -69,7 +69,14 @@ class SheetFetchWorker(QThread):
         except Exception as e:
             self.failed.emit(str(e))
             return
-        if self.project.base_rows is not None and rows == [list(r) for r in self.project.base_rows]:
+        from .. import ingest, changes
+        if self.project.google_sheet_master and self.project.rows is not None:
+            same = (not changes.source_diff(self.project.rows,rows,protected_logos=self.project.logos)
+                    and ingest.hidden_ranges(rows) == self.project.base_hidden_rows)
+        else:
+            same = (self.project.base_rows is not None and rows == [list(r) for r in self.project.base_rows]
+                and ingest.hidden_ranges(rows) == self.project.base_hidden_rows)
+        if same:
             self.unchanged.emit(path)
         else:
             self.changed.emit(path)

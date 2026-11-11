@@ -973,11 +973,16 @@ class MainWindow(QMainWindow):
         self.recent_menu = m.addMenu("Open Recent")
         m.addSeparator()
         self._act(m, "Update from Revised Sheet…", "Ctrl+U", self.update_from_sheet).setToolTip(
-            "Bring in a newer version of the credits without losing the work done here")
+            "Review source credit changes while retaining EasyCrawl formatting")
         self._act(m, "Import History…", None, self.show_import_history)
         self.refresh_action = self._act(m, "Refresh from Google Sheet", "Ctrl+Shift+U",
                                         lambda: self._fetch_google(manual=True))
         self.refresh_action.setToolTip("Download the sheet again and review what changed")
+        self.master_source_action = self._act(m, "Google Sheet is master for credit text", None,
+            lambda checked: self._set_google_master(checked))
+        self.master_source_action.setCheckable(True)
+        self.master_source_action.setChecked(self.project.google_sheet_master)
+        self.master_source_action.setToolTip("Review all differences against the Google Sheet, including earlier skipped edits and capitalization. All incoming changes start selected.")
         self.watch_action = self._act(m, "Watch Google Sheet for Changes", None, self._sync_google)
         self.watch_action.setCheckable(True)
         self.watch_action.setChecked(self._settings().value("google/watch", True, type=bool))
@@ -986,8 +991,8 @@ class MainWindow(QMainWindow):
         self.auto_apply_action = self._act(m, "Apply Google Sheet Changes Automatically", None, self._sync_google)
         self.auto_apply_action.setCheckable(True)
         self.auto_apply_action.setChecked(self._settings().value("google/auto_apply", False, type=bool))
-        self.auto_apply_action.setToolTip("Bring changes straight in while watching. Rows you have also edited "
-                                          "here are still held back for review.")
+        self.auto_apply_action.setToolTip("Apply changes while watching. In master mode the Google Sheet supplies all credit text; "
+                                          "with master mode off, conflicting local text edits are held for review.")
         self.import_options_action = self._act(m, "Import Options…", None, self.import_options)
         self.import_options_action.setToolTip("Which worksheet, columns and start row the credits are read from")
         self._act(m, "Reload Sheet (discard edits)", QKeySequence.Refresh,
@@ -1264,6 +1269,8 @@ class MainWindow(QMainWindow):
         self.project.music_blocks[:] = []
         self.project.import_notes[:] = []
         self.project.base_rows = None
+        self.project.hidden_rows[:] = []
+        self.project.base_hidden_rows[:] = []
         self.load_sheet("", preserve_edits=True)
         self.sheet_editor.table.setCurrentCell(0, 0)
         self.sheet_editor.table.setFocus()
@@ -1296,6 +1303,8 @@ class MainWindow(QMainWindow):
         if fresh:
             # What the client sent, kept so a revised sheet can be merged in later.
             self.project.base_rows = [list(r) for r in rows]
+            self.project.hidden_rows[:] = ingest.hidden_ranges(rows)
+            self.project.base_hidden_rows[:] = ingest.hidden_ranges(rows)
             self.project.record_import(rows)
             self.project.import_notes[:] = notes
             self.project.dismissed[:] = [k for k in self.project.dismissed if not k.startswith("import|")]
@@ -1349,9 +1358,14 @@ class MainWindow(QMainWindow):
             restore_import_settings()
             QMessageBox.critical(self, "Can't read sheet", str(e))
             return
-        found = changes.diff(self.project.base_rows, self.sheet_editor.rows(), new_rows)
+        master = self.project.google_sheet_master and (from_google or gsheets.is_link(self.project.source_url))
+        found = (changes.source_diff(self.sheet_editor.rows(),new_rows,protected_logos=self.project.logos) if master
+                 else changes.diff(self.project.base_rows, self.sheet_editor.rows(), new_rows))
         name = "the Google Sheet" if from_google else Path(path).name
         if not found:
+            if ingest.hidden_ranges(new_rows) != self.project.base_hidden_rows:
+                self.sheet_editor.apply_update(new_rows, [], notes)
+                self._unsaved = True
             # Still the new reference point: its rows match what is here.
             self.project.base_rows = [list(r) for r in new_rows]
             self.project.source = str(Path(path).resolve())
@@ -1371,7 +1385,7 @@ class MainWindow(QMainWindow):
                 return None
             accepted = list(found)
         else:
-            dialog = ChangeDialog(found, name, self, current_rows=self.sheet_editor.rows(), incoming_rows=new_rows)
+            dialog = ChangeDialog(found, name, self, current_rows=self.sheet_editor.rows(), incoming_rows=new_rows, authoritative=master)
             if dialog.exec() != ChangeDialog.Accepted:
                 restore_import_settings()
                 return
@@ -1507,8 +1521,17 @@ class MainWindow(QMainWindow):
         self._title()
         self._sync_google()
 
+    def _set_google_master(self, enabled):
+        self.project.google_sheet_master = bool(enabled)
+        self._unsaved = True
+        self._title()
+        self._sync_google()
+
     def _sync_google(self):
         """Menu state and the watch timer follow whether the source is a Google Sheet."""
+        self.master_source_action.blockSignals(True)
+        self.master_source_action.setChecked(self.project.google_sheet_master)
+        self.master_source_action.blockSignals(False)
         linked = bool(self.project.source_url)
         settings = self._settings()
         settings.setValue("google/watch", self.watch_action.isChecked())
@@ -1555,13 +1578,14 @@ class MainWindow(QMainWindow):
         if path == self._offered_path and self.banner.isVisible():
             return
         self._offered_path = path
-        self.banner_label.setText("The Google Sheet has changed since its credits were brought in."
+        self.banner_label.setText(("Current credits differ from the Google Sheet." if self.project.google_sheet_master
+                                   else "The Google Sheet has changed since its credits were brought in.")
                                   + (" Some changes touch rows edited here, so nothing was applied." if held else ""))
         self.banner.setVisible(True)
 
     def _fetch_unchanged(self, path: str):
         if self._fetch_manual:
-            self.statusBar().showMessage("The Google Sheet has no changes to bring in.")
+            self.update_from_sheet(path, from_google=True)
         self._offered_path = None
         self.banner.setVisible(False)
 

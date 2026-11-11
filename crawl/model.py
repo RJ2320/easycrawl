@@ -26,6 +26,7 @@ class RolePair:
     row: int = 0
     music: bool = False
     names_pending: bool = False   # set by a "roles" layout override: no names yet, don't flag it
+    center_names: bool = False  # centered exception retaining credit-name typography
 
 
 @dataclass
@@ -37,6 +38,10 @@ class ListBlock:
     width_percent: Optional[float] = None  # None follows the shared Look width
     column_gap: Optional[int] = None  # None follows the shared Look gap
     flow: str = "down"  # explicit thanks default to across; automatic lists retain down
+    source_rows: Optional[List[int]] = None  # original coordinates when hidden rows were skipped
+
+    def name_row(self, index):
+        return self.source_rows[index] if self.source_rows is not None else self.row + index
 
 
 @dataclass

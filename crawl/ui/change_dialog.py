@@ -45,7 +45,7 @@ def _incoming_boundary(current, incoming, position):
 class ChangeDialog(QDialog):
     """A checklist of changes. `accepted_changes()` after exec() gives the ticked ones."""
 
-    def __init__(self, changes, sheet_name: str, parent=None, current_rows=None, incoming_rows=None):
+    def __init__(self, changes, sheet_name: str, parent=None, current_rows=None, incoming_rows=None, authoritative=False):
         super().__init__(parent)
         self.changes = list(changes)
         self.current_rows = [tuple(r) for r in current_rows] if current_rows is not None else None
@@ -58,6 +58,10 @@ class ChangeDialog(QDialog):
         hint = QLabel("Choose which changes to bring in. Checked = use the incoming spreadsheet; unchecked = keep your current credits. "
                       "Select a change to compare it within its surrounding section below.\n"
                       "Changes that also replace an edit made here start unchecked. Layout, logos, look and timing are kept.")
+        if authoritative:
+            hint.setText("The Google Sheet is the master for credit text. All differences—including earlier skipped changes—start selected. "
+                         "Capitalization-only changes are labelled separately. Uncheck an item only if you want to keep that difference for now.\n"
+                         "Layout, artwork assignments, Look and timing settings are retained where their source rows remain.")
         hint.setProperty("role", "caption")
         hint.setWordWrap(True)
 
@@ -75,7 +79,7 @@ class ChangeDialog(QDialog):
         for i, change in enumerate(self.changes):
             if change.conflict:
                 change.accepted = False
-            kind = QTableWidgetItem(KIND_LABELS[change.kind] + ("  · review your edit" if change.conflict else ""))
+            kind = QTableWidgetItem(("Capitalization" if change.capitalization_only else KIND_LABELS[change.kind]) + ("  · review your edit" if change.conflict else ""))
             kind.setFlags(kind.flags() | Qt.ItemIsUserCheckable)
             kind.setCheckState(Qt.Checked if change.accepted else Qt.Unchecked)
             if change.conflict:

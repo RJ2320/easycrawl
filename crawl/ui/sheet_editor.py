@@ -24,11 +24,12 @@ LAYOUT_LABELS = {
     'roles': 'Roles — left column, names to come',
     'list': 'List in columns',
     'center': 'Centred lines',
+    'center_name': 'Centered credit name',
     'legal': 'Legal text',
     'thanks': 'Special thanks',
 }
 LAYOUT_SHORT = {'auto': 'Automatic', 'roles': 'Roles (names to come)', 'list': 'List in columns',
-                'center': 'Centred lines', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
+                'center': 'Centred lines', 'center_name': 'Center credit name', 'legal': 'Legal text', 'thanks': 'Special thanks…', 'logo': 'Logo block…'}
 UNDO_LIMIT = 200
 
 
@@ -300,13 +301,13 @@ class SheetEditor(QWidget):
 
     def _ranges(self):
         """Every list of {start, end} row ranges that must follow inserted and deleted rows."""
-        return (self.project.arrangements, self.project.overrides, self.project.import_notes, self.project.music_blocks,
+        return (self.project.arrangements, self.project.overrides, self.project.import_notes, self.project.music_blocks, self.project.hidden_rows,
                 self.table.change_marks)
 
     def _state(self):
         p = self.project
         return json.dumps([self.rows(), p.arrangements, p.overrides, p.logos, p.logo_settings,
-                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks])
+                           p.dismissed, p.import_notes, p.base_rows, self.table.change_marks, p.music_blocks, p.hidden_rows, p.base_hidden_rows])
 
     def commit_undo(self):
         """Record a step if anything undoable changed since the last one."""
@@ -337,12 +338,14 @@ class SheetEditor(QWidget):
             self._restore(self._redo.pop())
 
     def _restore(self, state):
-        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks = json.loads(state)
+        rows, arrangements_, overrides, logos, logo_settings, dismissed, notes, base_rows, marks, music_blocks, hidden_rows, base_hidden_rows = json.loads(state)
         current = (self.table.currentRow(), self.table.currentColumn())
         p = self.project
         p.arrangements[:] = arrangements_
         p.overrides[:] = overrides
         p.music_blocks[:] = music_blocks
+        p.hidden_rows[:] = hidden_rows
+        p.base_hidden_rows[:] = base_hidden_rows
         p.dismissed[:] = dismissed
         p.import_notes[:] = notes
         p.base_rows = base_rows
@@ -483,7 +486,10 @@ class SheetEditor(QWidget):
         self.table.blockSignals(True)
         for _ in range(count):
             for ranges in self._ranges():
-                arrangements.insert_row(ranges, at)
+                if ranges is self.project.hidden_rows:
+                    ingest.insert_hidden_row(ranges, at)
+                else:
+                    arrangements.insert_row(ranges, at)
             self.table.insertRow(at)
             for c in range(3):
                 self.table.setItem(at, c, QTableWidgetItem(''))
@@ -521,7 +527,10 @@ class SheetEditor(QWidget):
         if not labels:
             row = row + 1 if row >= 0 else len(rows)
             for ranges in self._ranges():
-                arrangements.insert_row(ranges, row)
+                if ranges is self.project.hidden_rows:
+                    ingest.insert_hidden_row(ranges, row)
+                else:
+                    arrangements.insert_row(ranges, row)
             rows.insert(row, ['', '', ''])
         used = {label for b, c, d in rows for label in ingest.logo_labels(b or c)} | set(self.project.logos)
         for index, path in enumerate(paths):
@@ -848,7 +857,11 @@ class SheetEditor(QWidget):
                 raise ValueError('Column gap cannot be negative.')
             if pixels <= (columns - 1) * gap:
                 raise ValueError('The columns have no room for text. Increase the section width or reduce the column gap.')
-        if kind not in ('auto', 'legal', 'thanks') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
+        if kind == 'center_name':
+            occupied = [rows[r] for r in selected if 0 <= r < len(rows) and any(rows[r])]
+            if not occupied or any(sum(bool(value) for value in row)!=1 for row in occupied):
+                raise ValueError('Select a name-only row with just one populated cell. Role/name pairs stay together.')
+        if kind not in ('auto', 'legal', 'thanks', 'center_name') and not any(rows[r][0] and not rows[r][1] and not rows[r][2]
                                       for r in selected if r < len(rows)):
             raise ValueError('Layout overrides apply to rows with only column B filled '
                              '(roles or names with nothing in C or D).')
@@ -1209,8 +1222,10 @@ class SheetEditor(QWidget):
         only_problems = self.errors_chip.isChecked() and bool(self.findings)
         only_changed = self.changes_chip.isChecked() and bool(self.table.change_marks)
         problem_rows = {f.row - 1 for f in self.findings}
+        source_hidden = ingest.hidden_indices(self.project.hidden_rows)
         for row in range(self.table.rowCount()):
-            hidden = (only_problems and row not in problem_rows) or \
+            hidden = (row in source_hidden and not any(self.table.item(row,c) and self.table.item(row,c).text() for c in range(3))) or \
+                     (only_problems and row not in problem_rows) or \
                      (only_changed and not self.table.changed_at(row))
             if self.table.isRowHidden(row) != hidden:
                 self.table.setRowHidden(row, hidden)
@@ -1282,6 +1297,8 @@ class SheetEditor(QWidget):
                     at = a + note['start'] - (c.sheet_row - 1)
                     self.project.import_notes.append(dict(start=at, end=at, message=note['message']))
         self.project.base_rows = [list(r) for r in new_rows]
+        self.project.hidden_rows[:] = ingest.map_hidden_rows(new_rows, rows)
+        self.project.base_hidden_rows[:] = ingest.hidden_ranges(new_rows)
         self._fill(rows)
         self._sync_changes_chip()
         self._changed()

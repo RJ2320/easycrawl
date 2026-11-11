@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.12
+
+- Ignore hidden worksheet rows without adding text or spacing, while preserving visible blank rows and source coordinates.
+- Save hidden-row metadata with projects and track it through edits, undo and source revisions.
+- Recover hidden-row visibility for older projects when a matching cached workbook is available.
+- Add Center credit name for standalone names, retaining normal name typography and line spacing across source-column changes.
+- Treat Google Sheets as the master for credit text by default; include capitalization and previously skipped differences on refresh.
+- Label capitalization-only changes separately in revision review and retain the optional three-way merge mode.
+- Protect assigned EasyCrawl logo rows when they correspond to source logo placeholders.
+
 ## 0.3.11
 
 - Fix Move earlier / Move later so logo order updates immediately and the selection survives refreshes.

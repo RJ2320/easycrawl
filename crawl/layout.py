@@ -118,6 +118,12 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                 pen += (look.music_title_gap if music_title else look.header_gap_after) * flex
 
             elif isinstance(b, RolePair):
+                if b.center_names:
+                    for name in b.names:
+                        for line in text.wrap(styles['name'], name, column_width or look.list_width):
+                            put(line, 'name', look.center_x, 'ms', pen)
+                            pen += styles['name'].leading * flex
+                    continue
                 if b.music or column_width:
                     role_style, name_style = ("music_role", "music_name") if b.music else ("role", "name")
                     label_width = text.width(styles[role_style], b.role) if b.role else 0
@@ -167,7 +173,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     for name_index, name in enumerate(b.names):
                         for line in text.wrap(look.list, name, column_width):
                             put(line, "list", 0 if alignment == "left" else look.center_x,
-                                "ls" if alignment == "left" else "ms", pen, b.row + name_index)
+                                "ls" if alignment == "left" else "ms", pen, b.name_row(name_index))
                             pen += look.list.leading * flex
                 else:
                     pen = _list(L, b, look, flex, pen, put)
@@ -343,7 +349,7 @@ def _list(L: Layout, b: ListBlock, look: Look, flex: float, pen: float, put) -> 
                 continue
             cx = centres[c]
             for offset, line in enumerate(column[r]):
-                put(line, "list", cx, "ms", pen + offset * lead, b.row + indices[c][r])
+                put(line, "list", cx, "ms", pen + offset * lead, b.name_row(indices[c][r]))
         pen += line_count * lead
     return pen
 

@@ -493,3 +493,28 @@ Drag entries up or down in the Logos list to reorder the credit grid, or use
 existing order. Reordering updates the list immediately, saves with the project
 and supports undo; the first move creates a logo grid if needed. Canvas dragging
 continues to adjust position rather than list order.
+
+Hidden Excel / Google Sheets rows add neither credit text nor spacing. Visible blank
+rows keep their normal group spacing. Original spreadsheet row numbers are retained
+for preview selection, warnings and revision merges; hidden status saves with the
+project and follows local row edits and undo. Older saved projects can recover hidden
+status from a matching cached workbook without changing their credit text.
+
+**Layout → Center credit name** centers a selected name-only row (column D), keeping
+the normal credit-name font, size and line spacing. Use it for a final standalone
+name in a cast/family list. Role/name pairs are protected; **Automatic** restores
+normal alignment. The choice saves with the project and supports undo.
+
+**File → Google Sheet is master for credit text** is enabled by default. Refresh
+compares the full current project text against the Google Sheet, including previously
+skipped differences, capitalization, insertions and deletions. All source changes
+start selected for review; capitalization-only edits are labelled. Formatting and
+artwork assignments remain in EasyCrawl for rows that still exist. Disable this
+option to use the older three-way merge that preserves local text edits. Automatic
+application still requires the separate **Apply Google Sheet Changes Automatically**
+option.
+
+Master-sheet refreshes preserve an assigned EasyCrawl logo row when it corresponds
+to a source logo placeholder. Downloaded/private artwork, logo settings and grid order
+remain in EasyCrawl. Center credit name formatting follows a standalone name moved
+between source columns.

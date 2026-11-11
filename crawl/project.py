@@ -54,6 +54,7 @@ class Project:
     source: str = ""
     # Where the sheet came from, if it was a Google Sheets link: refreshes re-download it.
     source_url: str = ""
+    google_sheet_master: bool = True  # Google refreshes include all current/source differences
     sheet: str = ""                 # worksheet name; "" = the likeliest one (ingest.guess_sheet)
     columns: str = ""               # "B,C,D-F" style column spec; "" = found automatically
     start_row: int = 1              # credits start here; rows above are title/notes
@@ -89,6 +90,8 @@ class Project:
     # The rows exactly as the client last sent them, so a revised sheet can be
     # merged in without losing edits made here (see changes.py).
     base_rows: Optional[List[List[str]]] = None
+    hidden_rows: List[dict] = field(default_factory=list)  # source-hidden ranges in current rows
+    base_hidden_rows: List[dict] = field(default_factory=list)  # visibility at last source refresh
     # What load() had to fix (moved or missing files). Not saved.
     load_notes: List[str] = field(default_factory=list, compare=False)
 
@@ -97,9 +100,9 @@ class Project:
     # Named project states; their payload excludes this history to avoid recursion.
     snapshots: List[dict] = field(default_factory=list)
 
-    _SIMPLE = ("source", "source_url", "sheet", "columns", "start_row", "list_columns", "max_panel",
+    _SIMPLE = ("source", "source_url", "google_sheet_master", "sheet", "columns", "start_row", "list_columns", "max_panel",
                "output_dir", "basename", "timestamp_output", "version_output", "codec", "alpha", "write_fusion", "write_report", "fmt", "logos", "logo_settings", "rows", "arrangements",
-               "overrides", "music_blocks", "dismissed", "import_notes", "base_rows", "snapshots", "import_history")
+               "overrides", "music_blocks", "dismissed", "import_notes", "base_rows", "hidden_rows", "base_hidden_rows", "snapshots", "import_history")
 
     def record_import(self, rows, action="Imported", applied=0, skipped=0, deduplicate=False):
         """Keep source provenance; opening a saved project is not a new import."""
@@ -203,7 +206,8 @@ class Project:
 
     @classmethod
     def load(cls, path: str) -> "Project":
-        p = cls.from_dict(json.loads(Path(path).read_text()))
+        data = json.loads(Path(path).read_text())
+        p = cls.from_dict(data)
         base = os.path.dirname(os.path.abspath(path))
         p.source = _absolute(p.source, base)
         p.output_dir = _absolute(p.output_dir, base)
@@ -211,7 +215,23 @@ class Project:
         for snapshot in p.snapshots:
             cls._map_paths(snapshot["state"], base, _absolute)
         p.load_notes = p._repair(base)
+        if "hidden_rows" not in data:
+            p._recover_hidden_rows()
         return p
+
+    def _recover_hidden_rows(self):
+        """Recover visibility for older files only when their cached source matches."""
+        if self.rows is None or not self.source or not ingest.is_workbook(self.source):
+            return
+        try:
+            source, _ = read_source(self, self.source)
+        except (OSError, ValueError, KeyError):
+            return
+        reference = self.base_rows if self.base_rows is not None else self.rows
+        if [list(row) for row in source] != [list(row) for row in reference]:
+            return
+        self.base_hidden_rows = ingest.hidden_ranges(source)
+        self.hidden_rows = ingest.map_hidden_rows(source, self.rows)
 
     def _repair(self, base: str) -> List[str]:
         """After loading: find files that moved, and fall back where they can't
@@ -316,6 +336,7 @@ def crawl_from_rows(project: Project, rows) -> Crawl:
     crawl = ingest.parse(rows, source=project.source, list_columns=project.list_columns,
                          break_before=boundaries, kinds=kinds, music_blocks=project.music_blocks,
                          ignore_blank_after_header=project.look.ignore_blank_after_header,
+                         hidden_rows=ingest.hidden_indices(project.hidden_rows),
                          thanks_sections=[item for item in project.overrides if item["kind"]=="thanks"])
     crawl.arrangements = copy.deepcopy(project.arrangements)
     for lg in crawl.logos():
@@ -347,7 +368,7 @@ def findings_for(project: Project, crawl: Crawl) -> List[lint.Finding]:
 def read_source(project: Project, path: str):
     """Read a sheet for this project: (rows as lists, import notes as row ranges)."""
     rows, notes = ingest.read_sheet(path, project.sheet, project.columns, project.start_row)
-    return ([list(r) for r in rows],
+    return (ingest.SheetRows([list(r) for r in rows], getattr(rows, "hidden_rows", ())),
             [dict(start=n.row - 1, end=n.row - 1, message=n.message) for n in notes])
 
 
@@ -356,6 +377,7 @@ def load_crawl(project: Project) -> Crawl:
         return crawl_from_rows(project, project.rows)
     rows, notes = read_source(project, project.source)
     project.import_notes = notes        # so findings_for() reports what import had to adjust
+    project.hidden_rows = ingest.hidden_ranges(rows)
     return crawl_from_rows(project, rows)
 
 

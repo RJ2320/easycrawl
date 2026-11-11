@@ -7,7 +7,7 @@ def group_ranges(rows, break_before=()):
     result = []
     for group in parse(rows, break_before=break_before).groups:
         last = group.blocks[-1]
-        end = last.row - 1 + (len(last.names) - 1 if isinstance(last, ListBlock) else 0)
+        end = last.name_row(len(last.names)-1)-1 if isinstance(last, ListBlock) and last.names else last.row-1
         result.append((group.first_row - 1, end))
     return result
 

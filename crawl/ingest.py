@@ -66,6 +66,43 @@ PREVIEW_ROWS = 3      # rows of text shown per worksheet when choosing one
 SHEET_NAMES = ("crawl", "end crawl", "credits", "end credits", "roller")
 
 
+class SheetRows(list):
+    """Rows plus zero-based hidden source coordinates; list equality stays compatible."""
+    def __init__(self, rows=(), hidden_rows=()):
+        super().__init__(rows)
+        self.hidden_rows = set(hidden_rows)
+
+
+def hidden_ranges(rows):
+    result = []
+    for row in sorted(getattr(rows, 'hidden_rows', ())):
+        if result and result[-1]['end'] + 1 == row:
+            result[-1]['end'] = row
+        else:
+            result.append(dict(start=row, end=row))
+    return result
+
+
+def hidden_indices(ranges):
+    return {row for item in ranges for row in range(item['start'], item['end'] + 1)}
+
+
+def insert_hidden_row(ranges, at):
+    # An inserted row is visible, even when placed inside a hidden source range.
+    shifted = {row + (row >= at) for row in hidden_indices(ranges)}
+    ranges[:] = hidden_ranges(SheetRows(hidden_rows=shifted))
+
+
+def map_hidden_rows(source, target):
+    """Locate unchanged source rows after local insertions or edits."""
+    from difflib import SequenceMatcher
+    hidden = getattr(source, 'hidden_rows', ())
+    result = []
+    for block in SequenceMatcher(None, [tuple(r) for r in source], [tuple(r) for r in target], autojunk=False).get_matching_blocks():
+        result.extend(block.b + row - block.a for row in hidden if block.a <= row < block.a + block.size)
+    return hidden_ranges(SheetRows(target, result))
+
+
 @dataclass
 class ImportNote:
     """Something the reader did, or could not do, to make an off-template sheet fit."""
@@ -209,6 +246,7 @@ def detect_columns(grid: Sequence[Sequence[str]]) -> str:
 
 def normalize_grid(grid: Sequence[Sequence[str]], columns: str = "",
                    start_row: int = 1) -> Tuple[List[Row], List[ImportNote]]:
+    hidden_rows = set(getattr(grid, 'hidden_rows', ()))
     notes: List[ImportNote] = []
     detected = detect_columns(grid)
     role, header, first, last = parse_columns(columns or detected)
@@ -251,7 +289,7 @@ def normalize_grid(grid: Sequence[Sequence[str]], columns: str = "",
         notes += [ImportNote(row, f"Not imported: column {col} has {_clip(value)!r} beside this row's credits.")
                   for row, col, value in ignored]
     notes.sort(key=lambda n: n.row)
-    return rows, notes
+    return SheetRows(rows, hidden_rows), notes
 
 
 def _clip(text: str, limit: int = 48) -> str:
@@ -288,12 +326,13 @@ def _read_xlsx_grid(p: Path, sheet: Optional[str]) -> List[List[str]]:
 
 
 def _xlsx_rows(ws) -> List[List[str]]:
-    grid: List[List[str]] = []
+    grid = SheetRows()
     dimensions = getattr(ws, "row_dimensions", None)     # not available on read-only sheets
     for row_number, raw in enumerate(ws.iter_rows(min_row=1, min_col=1, max_col=MAX_COLS, values_only=True), 1):
         dimension = dimensions.get(row_number) if dimensions is not None else None
         if dimension is not None and dimension.hidden:
-            # Preserve worksheet coordinates for findings and arrangements.
+            # Keep coordinates, but distinguish hidden rows from visible blanks.
+            grid.hidden_rows.add(row_number - 1)
             grid.append([])
             continue
         grid.append([_cell(v) for v in raw])
@@ -308,11 +347,40 @@ def _xlsx_rows(ws) -> List[List[str]]:
 #   roles    each row is a role in the left column, names to come
 #   list     set in list columns even if the run is short
 #   center   one centred line per row
-LAYOUT_KINDS = ("roles", "list", "center", "legal", "thanks")
+LAYOUT_KINDS = ("roles", "list", "center", "center_name", "legal", "thanks")
 
 
 def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_before=(),
-          kinds: Optional[dict] = None, music_blocks=(), thanks_sections=(), ignore_blank_after_header=False) -> Crawl:
+          kinds: Optional[dict] = None, music_blocks=(), thanks_sections=(), ignore_blank_after_header=False, hidden_rows=()) -> Crawl:
+    hidden = set(hidden_rows) | set(getattr(rows, 'hidden_rows', ()))
+    visible = [i for i, row in enumerate(rows) if i not in hidden or any(_cell(value) for value in row)]
+    if len(visible) != len(rows):
+        from bisect import bisect_left, bisect_right
+        indices = {old: new for new, old in enumerate(visible)}
+        def remap(ranges):
+            result = []
+            for item in ranges:
+                start, stop = bisect_left(visible, item['start']), bisect_right(visible, item['end'])
+                if start < stop:
+                    value = dict(item, start=start, end=stop-1)
+                    if visible[start] != item['start']:
+                        value['title'] = False
+                    result.append(value)
+            return result
+        crawl = parse([rows[i] for i in visible], source, list_columns,
+                      break_before={bisect_left(visible, edge) for edge in break_before},
+                      kinds={indices[i]: kind for i,kind in (kinds or {}).items() if i in indices},
+                      music_blocks=remap(music_blocks), thanks_sections=remap(thanks_sections),
+                      ignore_blank_after_header=ignore_blank_after_header)
+        for block in crawl.blocks():
+            if isinstance(block, ListBlock):
+                block.source_rows = [visible[block.row-1+i]+1 for i in range(len(block.names))]
+            if isinstance(block, LogoRow):
+                for logo in block.logos:
+                    logo.row = visible[logo.row-1]+1
+            block.row = visible[block.row-1]+1
+        return crawl
+
     # Also normalize embedded project rows and edits, not only file imports.
     # Keep row positions so lint continues to reference the original sheet.
     rows = [tuple(_cell(value) for value in row) for row in rows]
@@ -356,6 +424,10 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
 
         if i > 0 and i - 1 in explicit_music and i not in explicit_music:
             in_music, in_song = False, False
+        if kinds.get(i) == 'center_name' and sum(bool(value) for value in (b,c,d)) == 1:
+            group.blocks.append(RolePair(role='', names=_split_names(b or c or d), row=rownum, center_names=True))
+            i += 1
+            continue
         if kinds.get(i) == 'legal':
             group.blocks.append(Legal(text="\n".join(value for value in (b, c, d) if value), row=rownum))
             i += 1
@@ -425,7 +497,8 @@ def parse(rows: Sequence[Row], source: str = "", list_columns: int = 3, break_be
             i += 1
             continue
         if d:
-            group.blocks.append(RolePair(role=b, names=_split_names(d), row=rownum))
+            group.blocks.append(RolePair(role=b, names=_split_names(d), row=rownum,
+                                         center_names=kinds.get(i)=="center_name" and not b))
             i += 1
             continue
 

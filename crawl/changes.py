@@ -36,6 +36,12 @@ class Change:
     sheet_row: int = 0        # 1-based row in the revised sheet (0 for a removal)
     accepted: bool = True
 
+    @property
+    def capitalization_only(self):
+        return bool(self.old and len(self.old)==len(self.new) and self.old!=self.new
+                    and [[value.casefold() for value in row] for row in self.old]
+                    == [[value.casefold() for value in row] for row in self.new])
+
     def describe(self) -> str:
         where = f"row {self.start + 1}" if self.end - self.start <= 1 else f"rows {self.start + 1}–{self.end}"
         if self.kind == "add":
@@ -131,6 +137,37 @@ def diff(base: Optional[Sequence], current: Sequence, new: Sequence) -> List[Cha
         kind = "add" if not old_rows else "remove" if not new_rows else "change"
         changes.append(Change(kind, start, end, old_rows, new_rows, conflict, n1 + 1 if new_rows else 0))
     return changes
+
+
+def source_diff(current: Sequence, incoming: Sequence, protected_logos=()) -> List[Change]:
+    """All current-to-source differences; the source is authoritative.
+
+    Case-insensitive anchors keep capitalization-only edits separate from nearby
+    insertions/deletions, without suppressing the actual case-sensitive changes.
+    """
+    current, incoming = _rows(current), _rows(incoming)
+    from .ingest import logo_labels
+    protected_logos = set(protected_logos)
+    def slots(row):
+        return logo_labels(row[0] or row[1]) if not row[2] else []
+    def folded(rows):
+        # Match source logo placeholders to configured logo rows independently
+        # of their private artwork labels; source text remains authoritative.
+        return [('__easycrawl_logo_slot__', '', '') if slots(row) else
+                tuple(value.casefold() for value in row) for row in rows]
+    result = []
+    for tag,a,b,c,d in _opcodes(folded(current),folded(incoming)):
+        if tag == 'equal' or (tag == 'replace' and b-a == d-c):
+            for offset,(old,new) in enumerate(zip(current[a:b],incoming[c:d])):
+                if old != new:
+                    if slots(new) and protected_logos.intersection(slots(old)):
+                        continue  # artwork configured in EasyCrawl is a separate layer
+                    result.append(Change('change',a+offset,a+offset+1,[old],[new],False,c+offset+1))
+        else:
+            old, new = current[a:b], incoming[c:d]
+            kind = 'add' if not old else 'remove' if not new else 'change'
+            result.append(Change(kind,a,b,old,new,False,c+1 if new else 0))
+    return result
 
 
 @dataclass

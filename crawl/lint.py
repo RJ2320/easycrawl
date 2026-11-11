@@ -65,7 +65,7 @@ def _placeholders(crawl: Crawl) -> List[Finding]:
         elif isinstance(b, RolePair):
             texts = [(b.role, b.row, "role")] + [(n, b.row, "name") for n in b.names]
         elif isinstance(b, ListBlock):
-            texts = [(n, b.row + i, "list") for i, n in enumerate(b.names)]
+            texts = [(n, b.name_row(i), "list") for i, n in enumerate(b.names)]
         for value, row, target in texts:
             if value and PLACEHOLDER_RE.search(value):
                 out.append(Finding("placeholder", "error", row, f"template leftover: {value!r}", target,
@@ -80,7 +80,7 @@ def _empties(crawl: Crawl) -> List[Finding]:
             if b.role and not b.names and not b.names_pending:
                 out.append(Finding("empty", "error", b.row, f"{b.role!r} has no names", "name",
                                    f"empty|{_norm(b.role)}"))
-            elif b.names and not b.role:
+            elif b.names and not b.role and not b.center_names:
                 out.append(Finding("empty", "info", b.row, f"names without a role: {', '.join(b.names)}", "role",
                                    "no-role|" + "|".join(_norm(n) for n in b.names)))
     return out
@@ -95,8 +95,8 @@ def _duplicates(crawl: Crawl) -> List[Finding]:
             for k, n in enumerate(b.names):
                 key = _norm(n)
                 if key in seen:
-                    out.append(Finding("duplicate", "warning", b.row + k,
-                                       f"{n!r} already listed at row {b.row + seen[key]}", "list",
+                    out.append(Finding("duplicate", "warning", b.name_row(k),
+                                       f"{n!r} already listed at row {b.name_row(seen[key])}", "list",
                                        f"duplicate|{key}"))
                 else:
                     seen[key] = k
@@ -136,7 +136,7 @@ def _near_duplicates(crawl: Crawl, ratio: float) -> List[Finding]:
             elif isinstance(block, RolePair):
                 names.extend((_norm(n), n, block.row, "name") for n in block.names)
             elif isinstance(block, ListBlock):
-                names.extend((_norm(n), n, block.row + k, "list") for k, n in enumerate(block.names))
+                names.extend((_norm(n), n, block.name_row(k), "list") for k, n in enumerate(block.names))
 
     out = []
     for names in sections:
