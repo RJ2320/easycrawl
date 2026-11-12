@@ -799,6 +799,7 @@ class MainWindow(QMainWindow):
         for label,page in [('Look',self.look_tabs),('Timing',self.timing_panel),('Export settings',self.output_panel)]:
             button=QPushButton(label)
             button.setCheckable(True)
+            button.setProperty('pageNavigation',True)
             button.setToolTip(f'Open {label.lower()} settings for the project')
             button.clicked.connect(lambda checked=False,page=page:self._open_top_page(page))
             self.top_page_buttons[page]=button

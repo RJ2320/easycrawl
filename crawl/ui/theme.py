@@ -130,6 +130,8 @@ QPushButton, QToolButton {{ background: {RAISED}; border: 1px solid {BORDER}; bo
                            padding: 5px 12px; }}
 QPushButton:hover, QToolButton:hover {{ border-color: {BORDER_STRONG}; background: #30333a; }}
 QPushButton:pressed, QToolButton:pressed, QToolButton:checked {{ background: {ACCENT_DIM}; border-color: {ACCENT}; }}
+QPushButton[pageNavigation="true"]:checked {{ background: {ACCENT_DIM}; border-color: {ACCENT}; color: {ACCENT_HOVER}; }}
+QPushButton[pageNavigation="true"]:checked:hover {{ background: {ACCENT_DIM}; border-color: {ACCENT_HOVER}; }}
 QPushButton:disabled, QToolButton:disabled {{ color: {FAINT}; background: {PANEL}; border-color: {BORDER}; }}
 QPushButton[primary="true"] {{ background: {ACCENT}; border-color: {ACCENT}; color: #06121f; font-weight: 600;
                               padding: 6px 16px; }}
