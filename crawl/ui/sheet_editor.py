@@ -80,7 +80,13 @@ class SheetEditor(QWidget):
         self._last_state = None
 
         self.table = ArrangementTable(project)
-        self.table.setHorizontalHeaderLabels(['B · Role / list / logo', 'C · Header / song', 'D · Names'])
+        self.table.setHorizontalHeaderLabels(['B · Role / Text', 'C · Heading', 'D · Name'])
+        for column,tip in enumerate([
+            'Source column B: role / job title, names-only lists, general text, and logo blocks. Layout markings determine how it appears in the crawl.',
+            'Source column C: section headings and song titles. Can also hold centered text or logo blocks, depending on the selected layout.',
+            'Source column D: credit names, usually paired with a role in B. In names-only layouts, B and D both use the name style.',
+        ]):
+            self.table.horizontalHeaderItem(column).setToolTip(tip)
         self.table.tooltip_for = self.cell_tooltip
 
         # ---- row 1: things you do to the sheet -----------------------------
