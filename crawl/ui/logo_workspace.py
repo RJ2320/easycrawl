@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal, QItemSelectionModel,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from .logo_canvas import LogoCanvas
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-                              QPushButton, QComboBox, QListWidget,QListWidgetItem,QLineEdit, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog,QStyle)
+                              QPushButton, QComboBox, QListWidget,QListWidgetItem,QLineEdit, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog,QStyle,QMenu,QWidgetAction)
 from .. import ingest
 from .widgets import LogoBar, _spin
 
@@ -103,10 +103,7 @@ class LogoWorkspace(QWidget):
         grid=QWidget();grid_form=QFormLayout(grid)
         grid_form.addRow('Logos per row',self.columns)
         grid_form.addRow('Space between columns',self.gap)
-        grid_toggle=QPushButton('Grid settings ▸');grid_toggle.setCheckable(True)
-        grid_toggle.toggled.connect(grid.setVisible);grid.hide()
-        apply = QPushButton('Apply logo grid')
-        apply.clicked.connect(self.apply_grid)
+        apply = QPushButton('Apply layout')
         library = QPushButton('Logo library…')
         library.setToolTip('Choose saved or common artwork to add to the current logo block')
         library.clicked.connect(self.open_library)
@@ -141,7 +138,6 @@ class LogoWorkspace(QWidget):
         layout.addLayout(blocks_header);layout.addWidget(self.block_chooser)
         actions=QHBoxLayout();actions.addWidget(add);actions.addWidget(library)
         layout.addLayout(actions)
-        layout.addWidget(grid_toggle);layout.addWidget(grid)
         grid_form.addRow(apply)
         layout.addWidget(QLabel('Artwork in selected block'))
         layout.addWidget(self.artwork, 1)
@@ -161,6 +157,21 @@ class LogoWorkspace(QWidget):
         tools.setContentsMargins(10,4,10,4)
         tools.addWidget(QLabel('View'))
         tools.addWidget(self.preview_mode)
+        self.layout_menu=QMenu(self)
+        self.single_row_action=self.layout_menu.addAction('Single row',lambda:self._preset_grid(False))
+        self.single_row_action.setToolTip('Place up to six logos in one row. For larger blocks, use a custom grid.')
+        self.layout_menu.addAction('Stacked',lambda:self._preset_grid(True))
+        self.layout_menu.addSeparator()
+        advanced=QWidgetAction(self.layout_menu);advanced.setDefaultWidget(grid)
+        self.layout_menu.addAction(advanced)
+        self.layout_button=QToolButton()
+        self.layout_button.setText('Layout')
+        self.layout_button.setAccessibleName('Logo block layout')
+        self.layout_button.setToolTip('Arrange this logo block in a single row, stack, or custom grid. Pair tools set the exact gap for two selected logos.')
+        self.layout_button.setMenu(self.layout_menu)
+        self.layout_button.setPopupMode(QToolButton.InstantPopup)
+        tools.addWidget(self.layout_button)
+        apply.clicked.connect(lambda:(self.apply_grid(),self.layout_menu.close()))
         for title,entries in [('Align',[('Align left edges','left'),('Align horizontal centers','center_x'),
               ('Align right edges','right'),('Align top edges','top'),('Align vertical centers','center_y'),('Align bottom edges','bottom')]),
               ('Distribute',[('Space evenly left to right','distribute_x'),('Space evenly top to bottom','distribute_y')])]:
@@ -293,6 +304,8 @@ class LogoWorkspace(QWidget):
         self.block_toggle.setToolTip(title+location+'\nClick to change logo block')
         cfg = self.arrangement() or {}
         labels = section['labels'] if section else []
+        self.layout_button.setEnabled(len(labels)>1)
+        self.single_row_action.setEnabled(2<=len(labels)<=6)
         order = cfg.get('logo_order', [])
         labels = sorted(labels, key=lambda label: order.index(label) if label in order else len(order))
         self.artwork.blockSignals(True)
@@ -306,6 +319,12 @@ class LogoWorkspace(QWidget):
         self._draw()
         self.inspector.load('', {})
         self.request_context()
+
+    def _preset_grid(self,stacked):
+        section=self.current()
+        if not section or len(section['labels'])<2:return
+        self.columns.setValue(1 if stacked else min(6,len(section['labels'])))
+        self.apply_grid()
 
     def _select(self, label):
         self.view.select_logo(label)
