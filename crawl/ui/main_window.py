@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QUrl, QProcess, QSettings, QStandardPaths, Qt, QTimer, Signal
-from PySide6.QtGui import QDesktopServices, QAction, QColor, QKeySequence
+from PySide6.QtGui import QDesktopServices, QAction, QColor, QIcon, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
                                QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
                                QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QRadioButton,
@@ -27,7 +27,7 @@ from .sheet_editor import SheetEditor
 from .music_panel import MusicPanel
 from .logo_workspace import LogoWorkspace
 from .workspace_navigation import WorkspaceNavigation, StyleDisclosure
-from .widgets import LOGO_DEFAULTS, PreviewPanel, StyleEditor, _dspin, _spin, panel_expand_icon, resettable, default_look
+from .widgets import LOGO_DEFAULTS, ColorPicker, PreviewPanel, StyleEditor, _dspin, _spin, panel_expand_icon, resettable, default_look
 from .worker import RebuildWorker, RenderWorker, SheetFetchWorker, UpdateCheckWorker
 
 FPS_CHOICES = [23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0]
@@ -192,6 +192,7 @@ class TimingPanel(QWidget):
 
 class LookPanel(QWidget):
     changed = Signal()
+    all_colors_changed = Signal()
 
     def __init__(self, project: proj.Project, parent=None):
         super().__init__(parent)
@@ -303,6 +304,12 @@ class LookPanel(QWidget):
                       "Spacing is measured in output pixels; Fit runtime may scale vertical spacing.")
         note.setWordWrap(True)
         il.addWidget(note)
+        self.all_colors = ColorPicker()
+        self.all_colors.setToolTip("Apply one color to every project text style, including music. Individual cell color overrides take precedence.")
+        self.all_colors.changed.connect(self._set_all_colors)
+        colors = QFormLayout()
+        colors.addRow("Font color · all styles", resettable(self.all_colors, lambda: (1,1,1), "all font colors", self._set_all_colors))
+        il.addLayout(colors)
         il.addWidget(self.advanced_toggle)
         self.style_disclosures=[]
         for ed in self.editors.values():
@@ -327,6 +334,23 @@ class LookPanel(QWidget):
         for w in self._geo_widgets():
             w.valueChanged.connect(self._apply)
 
+    def refresh_color(self):
+        colors = {tuple(style.color) for style in self.project.look.styles().values()}
+        self.all_colors.set_value(self.project.look.name.color)
+        if len(colors)>1:
+            self.all_colors.setText("Mixed colors…")
+            self.all_colors.setIcon(QIcon())
+            self.all_colors.setAccessibleName("Choose one color for all text styles")
+
+    def _set_all_colors(self, color):
+        for style in self.project.look.styles().values():
+            style.color = tuple(color)
+        for editor in self.editors.values():
+            editor.color.set_value(color)
+        self.refresh_color()
+        self.all_colors_changed.emit()
+        self.changed.emit()
+
     def _geo_widgets(self):
         return (self.center_x, self.gutter, self.group_gap,
                 self.header_before, self.header_after, self.list_width, self.list_gap,
@@ -335,6 +359,7 @@ class LookPanel(QWidget):
 
     def load(self):
         look = self.project.look
+        self.refresh_color()
         for w in self._geo_widgets():
             w.blockSignals(True)
         self.center_x.setValue(look.center_x)
@@ -658,6 +683,9 @@ class MainWindow(QMainWindow):
 
         for panel in (self.timing_panel, self.look_panel, self.output_panel, self.music_panel):
             panel.changed.connect(self._panel_changed)
+        self.look_panel.all_colors_changed.connect(self.music_panel.load)
+        self.music_panel.changed.connect(self.look_panel.refresh_color)
+        self.look_panel.changed.connect(self.look_panel.refresh_color)
         self._panel_last = self._panel_state()
         self.output_panel.resolution_requested.connect(self.change_resolution)
         self.output_panel.fps_requested.connect(self.timing_panel.fps.setEditText)

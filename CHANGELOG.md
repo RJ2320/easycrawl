@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.24
+
+- Choose a font color for all credit styles in Look, or adjust individual styles including music. Per-cell color overrides remain available.
+
 ## 0.3.23
 
 - Fit the B, C and D credit columns to the available pane width at launch and on resize.

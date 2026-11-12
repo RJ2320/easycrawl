@@ -117,6 +117,8 @@ def needs_colour(look: Look, L: Optional[Layout] = None) -> bool:
     """Grey is enough unless a text style or a logo actually has colour."""
     if any(tuple(s.color) != (1.0, 1.0, 1.0) for s in look.styles().values()):
         return True
+    if L and any(line.text_style and tuple(line.text_style.color) != (1, 1, 1) for line in L.lines):
+        return True
     return bool(L) and any(lg.path and _is_chromatic(lg.path) for lg in L.logos)
 
 

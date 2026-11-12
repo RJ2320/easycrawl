@@ -299,3 +299,26 @@ def test_no_wrap_toolbar_and_explicit_break_in_paired_names(monkeypatch):
     e.undo();assert rendered()==[value]
     nav.no_wrap.click();assert len(rendered())>1
     win._debounce.stop();win._unsaved=False;win.close()
+
+def test_look_all_colors_include_music_and_preserve_cell_overrides(tmp_path, monkeypatch):
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QColorDialog
+    from crawl.ui.main_window import MainWindow
+    p=Project(rows=[['Director','','Name']],cell_formats=[dict(start=0,end=0,column=2,color=[1,0,0])])
+    win=MainWindow(p);win._debounce.stop()
+    monkeypatch.setattr(QColorDialog,'getColor',lambda *_:QColor('#336699'))
+    win.look_panel.all_colors.click()
+    for style in p.look.styles().values():
+        assert style.color==pytest.approx((.2,.4,.6))
+    assert win.music_panel.editors['song'].color.text()=='#336699'
+    lines=layout(load_crawl(p),p.look).lines
+    assert next(l for l in lines if l.column==2).text_style.color==(1,0,0)
+    path=tmp_path/'colors.crawl.json';p.save(path)
+    assert Project.load(path).look.header.color==pytest.approx((.2,.4,.6))
+    win.music_panel.editors['song'].color.reset_button.click()
+    assert win.look_panel.all_colors.text()=='Mixed colors…'
+    win.look_panel.all_colors.reset_button.click()
+    assert all(tuple(st.color)==(1,1,1) for st in p.look.styles().values())
+    from crawl.export import needs_colour
+    assert needs_colour(p.look,layout(load_crawl(p),p.look))
+    win._debounce.stop();win._unsaved=False;win.close()

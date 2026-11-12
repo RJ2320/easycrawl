@@ -183,6 +183,7 @@ class StyleEditor(QGroupBox):
         self.style = style
         self.defaults = defaults or TextStyle
         self.font = FontPicker()
+        self.color = ColorPicker()
         self.size = _spin(8, 400, " px")
         self.leading = _spin(0, 600, " px")
         self.tracking = _dspin(-20, 60, 0.5, " px")
@@ -194,6 +195,7 @@ class StyleEditor(QGroupBox):
         column.setSpacing(6)
         metrics = QFormLayout()
         metrics.addRow("Font / weight", resettable(self.font, lambda: self.defaults().font, "font", self._reset_font))
+        metrics.addRow("Font color", resettable(self.color, lambda: self.defaults().color, "font color", self._set_color))
         metrics.addRow("Font size", resettable(self.size, lambda: self.defaults().size, "font size"))
         metrics.addRow("Line spacing", resettable(self.leading, lambda: self.defaults().leading, "line spacing"))
         self.leading.setToolTip("Distance between text baselines, in output pixels.\n"
@@ -213,12 +215,18 @@ class StyleEditor(QGroupBox):
         self.advanced.hide()
 
         self.load(style)
+        self.color.changed.connect(self._set_color)
         self.font.changed.connect(self._apply)
         self.size.valueChanged.connect(self._apply)
         self.leading.valueChanged.connect(self._apply)
         self.tracking.valueChanged.connect(self._apply)
         self.upper.toggled.connect(self._apply)
         self.italic.toggled.connect(self._apply)
+
+    def _set_color(self, value):
+        self.style.color = tuple(value)
+        self.color.set_value(value)
+        self.changed.emit()
 
     def _reset_font(self, value):
         self.style.font = value
@@ -229,6 +237,7 @@ class StyleEditor(QGroupBox):
         self.style = style
         for w in (self.size, self.leading, self.tracking, self.upper, self.italic):
             w.blockSignals(True)
+        self.color.set_value(style.color)
         self.font.set_value(style.font)
         self.size.setValue(style.size)
         self.leading.setValue(style.leading)
