@@ -68,6 +68,11 @@ class ArrangementDelegate(QStyledItemDelegate):
 
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
+        logo_column=self.table().logo_column(index.row())
+        if index.column()==0 and logo_column is not None:
+            option.text=self.table().item(index.row(),logo_column).text()
+            option.displayAlignment=Qt.AlignCenter
+            option.palette.setColor(option.palette.ColorRole.Text,QColor(theme.ROW_TYPES['Logos']))
         text = index.data() or ""
         if text and self.table().marked_heading_at(index.row()):
             option.font.setWeight(QFont.DemiBold)
@@ -167,14 +172,18 @@ class ArrangementDelegate(QStyledItemDelegate):
         return editor
 
     def setEditorData(self, editor, index):
-        editor.setPlainText(index.data(Qt.EditRole) or "")
+        column=self.table().logo_column(index.row()) if index.column()==0 else None
+        source=index.siblingAtColumn(column) if column is not None else index
+        editor.setPlainText(source.data(Qt.EditRole) or "")
         if self.table().typed_edit:
             editor.selectAll()                      # the key that started the edit replaces the cell
         else:
             editor.moveCursor(QTextCursor.End)
 
     def setModelData(self, editor, model, index):
-        model.setData(index, editor.toPlainText(), Qt.EditRole)
+        column=self.table().logo_column(index.row()) if index.column()==0 else None
+        source=index.siblingAtColumn(column) if column is not None else index
+        model.setData(source, editor.toPlainText(), Qt.EditRole)
 
     def updateEditorGeometry(self, editor, option, index):
         rect = option.rect
@@ -267,9 +276,16 @@ class ArrangementTable(QTableWidget):
         return bool(cells[0] and not cells[1] and not cells[2]
                     and not ingest.logo_labels(cells[0]))
 
+    def logo_column(self,row):
+        cells=[self.item(row,c).text() if self.item(row,c) else '' for c in range(3)]
+        populated=[c for c,value in enumerate(cells) if value]
+        if len(populated)==1 and populated[0] in (0,1) and ingest.logo_labels(cells[populated[0]]):
+            return populated[0]
+        return None
+
     def sync_centered_rows(self):
         # Spans are presentation only: all three underlying cells remain intact.
-        wanted = {row for row in range(self.rowCount()) if self.centered_at(row)}
+        wanted = {row for row in range(self.rowCount()) if self.centered_at(row) or self.logo_column(row) is not None}
         current = {row for row in range(self.rowCount()) if self.columnSpan(row, 0) > 1}
         if wanted == current:
             return

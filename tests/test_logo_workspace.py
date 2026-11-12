@@ -7,6 +7,31 @@ from crawl.render import render_preview
 from crawl.ui.widgets import pil_to_qimage
 
 
+def test_logo_rows_span_columns_without_moving_source_and_remain_editable():
+    from crawl.ui.sheet_editor import SheetEditor
+    from PySide6.QtWidgets import QStyleOptionViewItem
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QGuiApplication
+    for column in (0,1):
+        rows=[['','','']];rows[0][column]='[Logo: Example]'
+        p=Project();editor=SheetEditor(p);editor.load(rows)
+        table=editor.table;assert table.columnSpan(0,0)==3
+        assert editor.rows()==rows
+        index=table.model().index(0,0);delegate=table.itemDelegate()
+        option=QStyleOptionViewItem();delegate.initStyleOption(option,index)
+        assert option.text=='[Logo: Example]' and option.displayAlignment & Qt.AlignHCenter
+        cell=delegate.createEditor(table.viewport(),option,index)
+        delegate.setEditorData(cell,index);assert cell.toPlainText()=='[Logo: Example]'
+        cell.setPlainText('[Logo: Updated]');delegate.setModelData(cell,table.model(),index)
+        assert editor.rows()[0][column]=='[Logo: Updated]'
+        assert sum(bool(value) for value in editor.rows()[0])==1
+        table.setCurrentCell(0,0);editor.copy()
+        assert '[Logo: Updated]' in QGuiApplication.clipboard().text()
+        editor.clear_cells();assert not any(editor.rows()[0])
+        editor.undo();assert editor.rows()[0][column]=='[Logo: Updated]'
+        cell.deleteLater();editor.close()
+
+
 def project(tmp_path):
     paths = {}
     for label in 'ABCDE':

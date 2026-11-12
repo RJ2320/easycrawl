@@ -42,7 +42,7 @@ def test_centered_rows_keep_other_columns_visible_when_edited():
     editor = SheetEditor(Project())
     editor.load([['THANK YOU', '', ''], ['Director', '', 'Alice'], ['[Logo: Studio]', '', '']])
     editor.apply_layout([0, 1, 2], 'center')
-    assert [editor.table.columnSpan(r, 0) for r in range(3)] == [3, 1, 1]
+    assert [editor.table.columnSpan(r, 0) for r in range(3)] == [3, 1, 3]
     editor.table.item(0, 0).setText('SPECIAL THANKS')
     assert editor.rows()[0][0] == 'SPECIAL THANKS'
     editor.table.item(0, 2).setText('Bob')

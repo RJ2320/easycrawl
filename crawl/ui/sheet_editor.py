@@ -390,6 +390,8 @@ class SheetEditor(QWidget):
         if bounds is None:
             return
         top, left, bottom, right = bounds
+        if left==0 and any(self.table.logo_column(row) is not None for row in range(top,bottom+1)):
+            right=2
         data = self.rows()
         out = io.StringIO()
         # excel-tab quotes cells that contain line breaks, which is what Sheets and Excel expect.
@@ -403,6 +405,7 @@ class SheetEditor(QWidget):
 
     def clear_cells(self):
         cells = [(i.row(), i.column()) for i in self.table.selectedIndexes()]
+        cells=[(r,self.table.logo_column(r) if c==0 and self.table.logo_column(r) is not None else c) for r,c in cells]
         cells = [(r, c) for r, c in cells if self.table.item(r, c) and self.table.item(r, c).text()]
         self._set_cells({cell: '' for cell in cells})
 
@@ -421,7 +424,9 @@ class SheetEditor(QWidget):
         if len(data) == 1 and len(data[0]) == 1:
             # One value into a selection fills it, as in a spreadsheet.
             for index in self.table.selectedIndexes() or [self.table.currentIndex()]:
-                values[(index.row(), index.column())] = data[0][0]
+                row,column=index.row(),index.column()
+                source=self.table.logo_column(row) if column==0 else None
+                values[(row,source if source is not None else column)] = data[0][0]
         else:
             for r, line in enumerate(data):
                 for c, value in enumerate(line):
