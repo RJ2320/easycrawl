@@ -592,6 +592,10 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.look_tabs, "Look")
         tabs.addTab(self.timing_panel, "Timing")
         tabs.addTab(self.output_panel, "Export")
+        # Project-wide controls are reached from the top bar; retain the same
+        # pages so existing shortcuts and editor links still open them.
+        tabs.setTabVisible(tabs.indexOf(self.look_tabs),False)
+        tabs.setTabVisible(tabs.indexOf(self.timing_panel),False)
         tabs.setMinimumWidth(440)
         self.tabs = tabs
         self.workspace_navigation = WorkspaceNavigation(self)
@@ -769,6 +773,15 @@ class MainWindow(QMainWindow):
         row.addWidget(self.title_label)
         row.addWidget(self.subtitle_label)
         row.addStretch(1)
+        self.top_page_buttons={}
+        for label,page in [('Look',self.look_tabs),('Timing',self.timing_panel)]:
+            button=QPushButton(label)
+            button.setCheckable(True)
+            button.setToolTip(f'Open {label.lower()} settings for the project')
+            button.clicked.connect(lambda checked=False,page=page:self._open_top_page(page))
+            self.top_page_buttons[page]=button
+            row.addWidget(button)
+        self.tabs.currentChanged.connect(self._sync_top_pages)
         row.addWidget(self.format_chip)
         for chip in self.chips:
             row.addWidget(chip)
@@ -776,6 +789,15 @@ class MainWindow(QMainWindow):
         row.addWidget(self.header_progress)
         row.addWidget(self.export_btn)
         return header
+
+    def _open_top_page(self,page):
+        self._restore_panel_layout()
+        self.tabs.setCurrentWidget(page)
+        self._sync_top_pages()
+
+    def _sync_top_pages(self,*_):
+        for page,button in self.top_page_buttons.items():
+            button.setChecked(self.tabs.currentWidget() is page)
 
     def _banner(self) -> QWidget:
         """A strip under the header for things that happened on their own, e.g. the Google Sheet changed."""
