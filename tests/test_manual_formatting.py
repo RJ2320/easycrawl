@@ -96,15 +96,15 @@ def test_alignment_override_inside_thanks_section_is_not_swallowed():
 
 
 def test_bold_toggle_and_default_do_not_change_neighboring_cells():
-    from PySide6.QtWidgets import QMenu
+    from types import SimpleNamespace
+    from crawl.ui.workspace_navigation import WorkspaceNavigation
     p = Project(); e = SheetEditor(p); e.load([['Role','','Avery Morgan']])
     e.table.setCurrentCell(0,2)
-    menu = QMenu(); e._populate_layout_menu(menu)
-    formatting = next(action.menu() for action in menu.actions() if action.text() == 'Text formatting')
-    formatting.aboutToShow.emit()
-    action = next(action for action in formatting.actions() if action.text()=='Bold selected cells')
-    action.trigger(); assert p.cell_formats == [dict(start=0,end=0,column=2,bold=True)]
-    action.trigger(); assert not p.cell_formats
+    toolbar=WorkspaceNavigation(SimpleNamespace(project=p,sheet_editor=e))
+    toolbar.refresh_selection()
+    toolbar.bold.click(); assert p.cell_formats == [dict(start=0,end=0,column=2,bold=True)]
+    toolbar.bold.click(); assert not p.cell_formats
+    toolbar.close()
     e.close()
 
 

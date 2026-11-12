@@ -299,7 +299,7 @@ class LookPanel(QWidget):
         note = QLabel("Project text styles. Expand a style to adjust fonts and spacing.")
         note.setToolTip("Shared font settings for the row types shown in Credits. Position labels describe the normal layout. "
                       "A row marked * has local text styling, which can override these defaults. "
-                      "Use Credits → Layout → Text formatting for individual changes. "
+                      "Use the Text formatting button above Credits for individual changes. "
                       "Spacing is measured in output pixels; Fit runtime may scale vertical spacing.")
         note.setWordWrap(True)
         il.addWidget(note)
@@ -1066,6 +1066,8 @@ class MainWindow(QMainWindow):
         self._act(e, "Find…", QKeySequence.Find, self.find)
 
         v = self.menuBar().addMenu("&View")
+        v.addAction(self.sheet_editor.show_row_types_action)
+        v.addSeparator()
         self._act(v, "Play / Pause", "Space", self.preview.toggle_play)
         self._act(v, "Previous Section", "Ctrl+Up", lambda: self.preview.slider.jump(-1))
         self._act(v, "Next Section", "Ctrl+Down", lambda: self.preview.slider.jump(1))

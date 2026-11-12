@@ -90,6 +90,11 @@ class SheetEditor(QWidget):
         self.table.tooltip_for = self.cell_tooltip
 
         # ---- row 1: things you do to the sheet -----------------------------
+        self.arrange_action=QAction('Arrange sections in columns…',self)
+        self.arrange_action.triggered.connect(self._edit_current_arrangement)
+        self.show_row_types_action=QAction('Show row types',self,checkable=True)
+        self.show_row_types_action.setChecked(True)
+        self.show_row_types_action.toggled.connect(self.set_row_types_visible)
         insert_menu = QMenu(self)
         self._populate_rows_menu(insert_menu)
         layout_menu = QMenu(self)
@@ -110,13 +115,10 @@ class SheetEditor(QWidget):
 
         insert_menu.addSeparator()
         insert_menu.addMenu(more_menu)
-        self.arrange_button = _tool('Side by side…', 'Set the selected groups next to each other in columns.\n'
-                                    'Select rows across two or more groups (blank rows separate groups).')
         actions = QHBoxLayout()
         actions.setSpacing(4)
         actions.addWidget(_tool('Rows', 'Insert or delete rows', insert_menu))
         actions.addWidget(_tool('Layout', 'Choose section types, name-column layouts, music or logos', layout_menu))
-        actions.addWidget(self.arrange_button)
         actions.addStretch(1)
         self.expand_button = _tool('', 'Expand spreadsheet')
         self.expand_button.setIcon(panel_expand_icon())
@@ -227,7 +229,6 @@ class SheetEditor(QWidget):
         layout.addWidget(body, 1)
 
         self.table.currentCellChanged.connect(self._preview_selection_changed)
-        self.arrange_button.clicked.connect(self._edit_current_arrangement)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellChanged.connect(self._cell_changed)
         self.table.cellClicked.connect(self._cell_clicked)
@@ -813,12 +814,6 @@ class SheetEditor(QWidget):
         self._apply_filter()
 
     def _populate_layout_menu(self, menu, context=False):
-        show_types=menu.addAction('Show row types')
-        show_types.setVisible(not context)
-        show_types.setCheckable(True);show_types.setChecked(self._show_row_types)
-        show_types.setToolTip('Labels beside row numbers show how each row is interpreted. ✓ = manually marked; * = local text styling. Hover a row label for details.')
-        show_types.toggled.connect(self.set_row_types_visible)
-        menu.addSeparator()
         for kind,label in LAYOUT_SHORT.items():
             if kind=='list':
                 continue
@@ -830,27 +825,13 @@ class SheetEditor(QWidget):
             action = names.addAction(label, lambda checked=False, k=kind: self._apply_layout_to_selection(k))
             action.setCheckable(True); action.setData(kind)
             action.setToolTip('Treat each populated cell as a name, using the shared name font, size and line spacing')
-        formatting = menu.addMenu('Text formatting')
-        formatting.addAction('Format selected cells…', self.format_dialog)
-        bold = formatting.addAction('Bold selected cells')
-        bold.setCheckable(True)
-        bold.triggered.connect(lambda checked=False: self.apply_bold(checked))
-        formatting.addAction('Use section default', lambda: self.apply_cell_format({}, reset=True))
-        def update_formatting():
-            cells = [(i.row(), i.column()) for i in self.table.selectedIndexes() if i.data()]
-            bold.setChecked(bool(cells) and all(any(f['start'] <= row <= f['end'] and f['column'] == column
-                                                    and f.get('bold') for f in self.project.cell_formats)
-                                                for row, column in cells))
-        formatting.aboutToShow.connect(update_formatting)
         menu.addSeparator()
         music=menu.addAction('Music…',self.music_dialog)
         music.setCheckable(True);music.setData('music')
-        library=menu.addAction('Logo library…',self.add_logos)
-        library.setVisible(not context)
         menu.addSeparator()
-        advanced=menu.addMenu('More layouts')
-        action=advanced.addAction(LAYOUT_SHORT['list'],lambda:self._apply_layout_to_selection('list'))
-        action.setCheckable(True);action.setData('list')
+        if not context:menu.addAction(self.arrange_action)
+        advanced=menu.addAction('Name list in columns…',lambda:self._apply_layout_to_selection('list'))
+        advanced.setCheckable(True);advanced.setData('list')
         def update():
             row=self.table.currentRow()
             current=self.override_at(row)
@@ -860,7 +841,7 @@ class SheetEditor(QWidget):
             kind='logo' if logo else current['kind'] if current else 'music' if music else 'auto'
             if kind == 'center_name':
                 kind = 'names_center'
-            for action in menu.actions()+advanced.actions()+names.actions():
+            for action in menu.actions()+names.actions():
                 if action.isCheckable() and action.data() is not None:
                     action.setChecked(action.data()==kind)
                     if context:
@@ -881,9 +862,7 @@ class SheetEditor(QWidget):
                         action.setVisible(valid)
             if context:
                 names.menuAction().setVisible(any(action.isVisible() for action in names.actions()))
-                advanced.menuAction().setVisible(False)
-                formatting.menuAction().setVisible(False)
-            show_types.blockSignals(True);show_types.setChecked(self._show_row_types);show_types.blockSignals(False)
+                advanced.setVisible(False)
         menu.aboutToShow.connect(update)
         update()
 
@@ -1108,7 +1087,7 @@ class SheetEditor(QWidget):
         if override:
             tips.append(f"Layout: {LAYOUT_LABELS[override['kind']]}")
         if any(item['start'] <= row <= item['end'] and item['column'] == col for item in self.project.cell_formats):
-            tips.append('Manual styling — edit or reset under Layout → Text formatting')
+            tips.append('Manual styling — use Text formatting or the reset icon above Credits')
         mark = next((m for m in self.table.change_marks if m['start'] <= row <= m['end']), None)
         if mark:
             tips.append('Changed by the last sheet update' + (f" — was: {mark['was']}" if mark.get('was') else ''))
@@ -1231,7 +1210,7 @@ class SheetEditor(QWidget):
             return 'Edit music layout…'
         if current and current.get('logo_grid'):
             return 'Edit logo grid…'
-        return 'Edit side by side…' if current is not None else 'Side by side…'
+        return 'Edit section columns…' if current is not None else 'Arrange sections in columns…'
 
     def _current_logo_labels(self):
         row=self.table.currentRow()
@@ -1250,9 +1229,9 @@ class SheetEditor(QWidget):
             self.arrange_dialog(edit=current is not None)
 
     def _selection_changed(self):
-        self.arrange_button.setText(self._arrangement_action_text())
+        self.arrange_action.setText(self._arrangement_action_text())
         current=self.current_arrangement()
-        self.arrange_button.setToolTip('Open the Logos page and select the logos on this row' if self._current_logo_labels() else
+        self.arrange_action.setToolTip('Open the Logos page and select the logos on this row' if self._current_logo_labels() else
                                       'Open this section in the Music editor' if current and current.get('music') else
                                       'Open this section in the Logos editor' if current and current.get('logo_grid') else
                                       'Arrange whole credit groups next to each other in columns')

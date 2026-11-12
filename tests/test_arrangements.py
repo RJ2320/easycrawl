@@ -103,7 +103,7 @@ def test_editor_outline_edit_remove_and_insert():
     e.table.setCurrentCell(3, 0)
     e.insert_row()
     assert p.arrangements[0]['end'] == 14
-    assert e.arrange_button.text().startswith('Edit')    # the button edits when the cursor is inside one
+    assert e.arrange_action.text().startswith('Edit')    # the button edits when the cursor is inside one
     with pytest.raises(ValueError, match='overlaps'):
         e.apply_arrangement(range(2, 15))
     e.resize(750, 600)
