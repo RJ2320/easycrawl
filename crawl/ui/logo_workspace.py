@@ -76,9 +76,6 @@ class LogoWorkspace(QWidget):
         self.artwork = LogoOrderList()
         self.artwork.setToolTip("Drag logos up or down to change their order in the credits.")
         self.artwork.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.color_mode = QComboBox()
-        self.color_mode.addItem("Original color", "original")
-        self.color_mode.addItem("Greyscale", "grayscale")
         self.columns = _spin(1, 6, '')
         self.columns.setValue(3)
         self.gap = _spin(0, 1000, ' px')
@@ -129,8 +126,6 @@ class LogoWorkspace(QWidget):
         grid_form.addRow(apply)
         layout.addWidget(self.artwork, 1)
         layout.addLayout(buttons)
-        layout.addWidget(self.color_mode)
-        self.color_mode.currentIndexChanged.connect(self._color_changed)
         selected_actions=QHBoxLayout();selected_actions.addWidget(replace_button);selected_actions.addWidget(self.remove_button)
         layout.addLayout(selected_actions)
         layout.addWidget(show)
@@ -276,14 +271,6 @@ class LogoWorkspace(QWidget):
     def sync_selection(self, label):
         cfg = self.project.logo_settings.get(label, {})
         self.inspector.load(label, cfg)
-        self.color_mode.blockSignals(True)
-        self.color_mode.setCurrentIndex(1 if cfg.get('mode') == 'grayscale' else 0)
-        self.color_mode.setEnabled(bool(label))
-        self.color_mode.blockSignals(False)
-
-    def _color_changed(self, *_):
-        if self.inspector.label:
-            self.setting_changed.emit(self.inspector.label, {'mode': self.color_mode.currentData()})
 
     def set_build(self, build):
         self.build = build

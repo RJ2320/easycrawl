@@ -104,7 +104,7 @@ def test_workspace_links_grid_undo_and_source_position(tmp_path):
     assert win.preview.view.selected=='A'
     assert ws.alignment_buttons['left'].isEnabled() is False
     assert ws.alignment_buttons['distribute_x'].isEnabled() is False
-    ws.color_mode.setCurrentIndex(1)
+    ws.inspector.greyscale.setChecked(True)
     win._debounce.stop()
     assert p.logo_settings['A']['mode']=='grayscale'
     ws.show_row.emit(1)
@@ -232,7 +232,7 @@ def test_greyscale_inspector_syncs_render_save_undo_and_reset(tmp_path):
     win._debounce.stop()
     assert p.logo_settings['A']['mode'] == 'grayscale'
     assert win.logo_workspace.inspector.greyscale.isChecked()
-    assert win.logo_workspace.color_mode.currentData() == 'grayscale'
+    assert win.logo_workspace.inspector.greyscale.isChecked()
     path = tmp_path / 'grey.crawl.json'
     p.save(str(path))
     loaded = Project.load(str(path))

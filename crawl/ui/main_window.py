@@ -644,6 +644,9 @@ class MainWindow(QMainWindow):
         column.addWidget(self._banner())
         column.addWidget(split, 1)
         self.setCentralWidget(central)
+        status=self.statusBar()
+        status.messageChanged.connect(lambda message:status.setVisible(bool(message)))
+        status.hide()
         self.resize(1500, 900)
 
         self._debounce = QTimer(self)
@@ -1709,7 +1712,7 @@ class MainWindow(QMainWindow):
         self._remember(self.project_path)
         self._unsaved = False
         self._title()
-        self.statusBar().showMessage(f"Saved {self.project_path}")
+        self.statusBar().showMessage(f"Saved {self.project_path}",5000)
 
     def version_snapshots(self):
         if self._exporting():
@@ -1897,8 +1900,8 @@ class MainWindow(QMainWindow):
         self._sync_ready()
         self._set_chips([s.timecode, f"{s.speed} px/frame", f"spacing ×{s.flex:.2f}"])
         sticky, self._sticky_message = self._sticky_message, ""
-        self.statusBar().showMessage(sticky or f"{s.timecode} · {s.speed} px/frame · spacing ×{s.flex:.3f} · "
-                                               f"{len(build.layout.panels)} panels")
+        if sticky:self.statusBar().showMessage(sticky,6000)
+        else:self.statusBar().clearMessage()
 
     def _select_preview_credit(self, row, target):
         from ..lint import Finding
@@ -2143,7 +2146,7 @@ class MainWindow(QMainWindow):
     def _render_cancelled(self):
         self._finish_export()
         self.output_panel.result.setText("Export cancelled. The partial file was removed.")
-        self.statusBar().showMessage("Export cancelled")
+        self.statusBar().showMessage("Export cancelled",6000)
 
     def _render_progress(self, stage: str, i: int, n: int):
         label = f"encoding {i}/{n} frames" if stage == "encode" else \
@@ -2157,7 +2160,7 @@ class MainWindow(QMainWindow):
         self._finish_export()
         names = "<br>".join(Path(p).name for p in paths)
         self.output_panel.result.setText(f"Wrote to {Path(paths[0]).parent}:<br>{names}")
-        self.statusBar().showMessage(f"Exported {Path(paths[0]).name} to {Path(paths[0]).parent}")
+        self.statusBar().showMessage(f"Exported {Path(paths[0]).name} to {Path(paths[0]).parent}",8000)
 
     def _render_failed(self, msg: str):
         self._finish_export()
