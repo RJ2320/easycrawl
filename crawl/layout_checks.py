@@ -31,15 +31,15 @@ def regions(layout, look):
             font = text.font_for(st)
             if st.tracking:
                 for char, advance in zip(value, text.advances(st, value)):
-                    a,b,c,d = font.getbbox(char, anchor='ls')
+                    a,b,c,d = text.ink_bounds(font,char)
                     if c > a and d > b:
                         boxes.append((x+a,line.y+b,x+c,line.y+d))
                     x += advance
             else:
-                a,b,c,d = font.getbbox(value, anchor='ls')
+                a,b,c,d = text.ink_bounds(font,value)
                 if c > a and d > b:
                     boxes.append((x+a,line.y+b,x+c,line.y+d))
-                x += font.getlength(value)
+                x += text.advance_width(font,value)
             x += style.tracking
         if boxes:
             box = (min(b[0] for b in boxes), min(b[1] for b in boxes),

@@ -336,7 +336,7 @@ def _vertical_bounds(lines,artwork,look,ideal=False,natural=False):
     for line in lines:
         y=line.ideal_y if ideal and line.ideal_y is not None else line.y
         for style,value in text.runs(line.text_style or styles[line.style],line.text):
-            a,b,c,d=text.font_for(style).getbbox(value,anchor='ls')
+            a,b,c,d=text.ink_bounds(text.font_for(style),value)
             if c>a and d>b:
                 tops.append(y+b);bottoms.append(y+d)
     for logo in artwork:

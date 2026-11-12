@@ -42,6 +42,17 @@ def font_for(style: TextStyle, scale: float = 1.0) -> ImageFont.FreeTypeFont:
     return _load(italic_spec(spec) if style.italic else spec, max(1, int(round(style.size * scale))))
 
 
+@lru_cache(maxsize=16384)
+def ink_bounds(font, value):
+    """Reuse glyph measurements across timing trials and preview rebuilds."""
+    return font.getbbox(value,anchor='ls')
+
+
+@lru_cache(maxsize=16384)
+def advance_width(font,value):
+    return font.getlength(value)
+
+
 @lru_cache(maxsize=128)
 def bold_spec(spec: str) -> str:
     face = fonts.resolve(spec) or fonts.resolve_default(spec)
@@ -158,7 +169,7 @@ def width(style: TextStyle, s: str, scale: float = 1.0) -> float:
     if not s:
         return 0.0
     parts = list(runs(style, s))
-    return sum(font_for(st, scale).getlength(value) + max(0, len(value) - 1) * st.tracking * scale
+    return sum(advance_width(font_for(st, scale),value) + max(0, len(value) - 1) * st.tracking * scale
                for st, value in parts) + max(0, len(parts) - 1) * style.tracking * scale
 
 

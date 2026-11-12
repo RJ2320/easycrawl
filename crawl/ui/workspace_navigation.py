@@ -1,7 +1,8 @@
 """Section navigation and a contextual inspector for the experimental workspace."""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,QSize
+from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,
-                               QPushButton,QGroupBox,QAbstractItemView)
+                               QPushButton,QGroupBox,QAbstractItemView,QToolButton)
 from ..model import Header,LogoRow
 
 
@@ -17,6 +18,23 @@ class WorkspaceNavigation(QWidget):
         self.logos=QPushButton('Edit logo block…')
         self.shared=QPushButton('Project style…')
         buttons.addWidget(self.format);buttons.addWidget(self.logos);buttons.addWidget(self.shared)
+        self.text_tools=[]
+        bold=QToolButton();bold.setText('B');bold.setCheckable(True)
+        font=bold.font();font.setBold(True);bold.setFont(font)
+        bold.setToolTip('Bold selected text');bold.setAccessibleName('Bold selected text')
+        bold.clicked.connect(lambda checked:self.editor.apply_bold(checked))
+        self.bold=bold;buttons.addWidget(bold);self.text_tools.append(bold)
+        for alignment in ('left','center','right'):
+            pixmap=QPixmap(24,24);pixmap.fill(Qt.transparent)
+            painter=QPainter(pixmap);painter.setPen(QPen(QColor('#dce4ef'),2))
+            for y,width in ((5,18),(10,12),(15,18),(20,12)):
+                x=3 if alignment=='left' else 21-width if alignment=='right' else (24-width)//2
+                painter.drawLine(x,y,x+width,y)
+            painter.end()
+            tool=QToolButton();tool.setIcon(QIcon(pixmap));tool.setIconSize(QSize(20,20))
+            tool.setToolTip(f'Align selected text {alignment}');tool.setAccessibleName(f'Align selected text {alignment}')
+            tool.clicked.connect(lambda checked=False,value=alignment:self.editor.apply_cell_format({'alignment':value}))
+            buttons.addWidget(tool);self.text_tools.append(tool)
         buttons.addStretch(1)
         layout.addLayout(buttons)
         row=QHBoxLayout();row.addWidget(QLabel('Jump to section'))
@@ -71,6 +89,10 @@ class WorkspaceNavigation(QWidget):
         logo='Logos' in label
         self.format.setVisible(not logo);self.logos.setVisible(logo)
         self.format.setEnabled(bool(selected));self.shared.setEnabled(row>=0)
+        for tool in self.text_tools:tool.setEnabled(bool(self.editor._text_cells()) and not logo)
+        cells=self.editor._text_cells()
+        self.bold.setChecked(bool(cells) and all(any(item['start']<=r<=item['end'] and item['column']==c and item.get('bold')
+            for item in self.window.project.cell_formats) for r,c in cells))
 
     def show_style(self):
         self.window.tabs.setCurrentWidget(self.window.look_tabs)

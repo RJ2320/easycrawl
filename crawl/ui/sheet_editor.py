@@ -803,6 +803,7 @@ class SheetEditor(QWidget):
 
     def _populate_layout_menu(self, menu, context=False):
         show_types=menu.addAction('Show row types')
+        show_types.setVisible(not context)
         show_types.setCheckable(True);show_types.setChecked(self._show_row_types)
         show_types.setToolTip('Labels beside row numbers show how each row is interpreted. ✓ = manually marked; * = local text styling. Hover a row label for details.')
         show_types.toggled.connect(self.set_row_types_visible)
@@ -833,7 +834,8 @@ class SheetEditor(QWidget):
         menu.addSeparator()
         music=menu.addAction('Music…',self.music_dialog)
         music.setCheckable(True);music.setData('music')
-        menu.addAction('Logo library…',self.add_logos)
+        library=menu.addAction('Logo library…',self.add_logos)
+        library.setVisible(not context)
         menu.addSeparator()
         advanced=menu.addMenu('More layouts')
         action=advanced.addAction(LAYOUT_SHORT['list'],lambda:self._apply_layout_to_selection('list'))
@@ -869,7 +871,7 @@ class SheetEditor(QWidget):
             if context:
                 names.menuAction().setVisible(any(action.isVisible() for action in names.actions()))
                 advanced.menuAction().setVisible(any(action.isVisible() for action in advanced.actions()))
-                formatting.menuAction().setVisible(bool(self._text_cells()))
+                formatting.menuAction().setVisible(False)
             show_types.blockSignals(True);show_types.setChecked(self._show_row_types);show_types.blockSignals(False)
         menu.aboutToShow.connect(update)
         update()

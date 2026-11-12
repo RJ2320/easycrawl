@@ -615,6 +615,12 @@ class MainWindow(QMainWindow):
         viewer_layout.setContentsMargins(0,0,0,0);viewer_layout.setSpacing(0)
         viewer_layout.addWidget(self.logo_workspace.viewer_toolbar)
         self.logo_workspace.viewer_toolbar.hide()
+        self.logo_inspectors=QStackedWidget()
+        self.preview.view.inspector=None
+        self.logo_inspectors.addWidget(self.preview.logo_bar)
+        self.logo_inspectors.addWidget(self.logo_workspace.inspector)
+        viewer_layout.addWidget(self.logo_inspectors)
+        self.logo_inspectors.hide()
         viewer_layout.addWidget(self.preview_stack,1)
         split.addWidget(self.viewer_panel)
         tabs.currentChanged.connect(self._workspace_changed)
@@ -1989,6 +1995,8 @@ class MainWindow(QMainWindow):
         active = self.tabs.currentWidget() is self.logo_workspace
         self.logo_workspace.viewer_toolbar.setVisible(active)
         arranged=active and self.logo_workspace.preview_mode.currentData()=='arrange'
+        self.logo_inspectors.setCurrentIndex(1 if arranged else 0)
+        self.logo_inspectors.setVisible(bool(self.logo_workspace.inspector.label if arranged else self.preview.view.selected))
         self.preview_stack.setCurrentIndex(1 if arranged else 0)
         if active:
             self.preview.play.setChecked(False)
@@ -1996,6 +2004,7 @@ class MainWindow(QMainWindow):
 
     def _logo_context(self,row,label):
         if self.tabs.currentWidget() is not self.logo_workspace:return
+        self.logo_inspectors.setVisible(bool(label))
         if self.logo_workspace.preview_mode.currentData()!='crawl':return
         self.seek_row(row)
         self.preview.view.select_logo(label)
@@ -2015,6 +2024,7 @@ class MainWindow(QMainWindow):
         if label:
             self.preview.play.setChecked(False)
         self.preview.logo_bar.load(label, self.project.logo_settings.get(label, {}))
+        self.logo_inspectors.setVisible(bool(label))
         self.preview.view.place_inspector()
 
     def _logo_moved(self, label: str, dx: int, dy: int):
