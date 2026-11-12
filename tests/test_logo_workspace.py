@@ -32,6 +32,25 @@ def test_logo_rows_span_columns_without_moving_source_and_remain_editable():
         cell.deleteLater();editor.close()
 
 
+def test_block_list_count_filter_and_source_navigation():
+    from crawl.ui.sheet_editor import SheetEditor
+    from crawl.ui.logo_workspace import LogoWorkspace
+    p=Project();editor=SheetEditor(p)
+    editor.load([['','FIRST',''],['[Logo: A] | [Logo: B]','',''],
+                 ['','SECOND',''],['[Logo: C]','','']])
+    workspace=LogoWorkspace(p,editor);workspace.refresh()
+    assert workspace.block_count.text()=='2' and workspace.block_list.count()==2
+    assert workspace.block_list.item(0).text()=='FIRST\n2 logos'
+    assert 'Rows 2' in workspace.block_list.item(0).toolTip()
+    workspace._filter_blocks('SECOND')
+    assert workspace.block_list.item(0).isHidden() and not workspace.block_list.item(1).isHidden()
+    requests=[];workspace.preview_requested.connect(lambda row,label:requests.append(row))
+    workspace.select_source_row(3)
+    assert workspace.current()['labels']==['C'] and requests[-1]==4
+    assert workspace.block_count.text()=='2'
+    workspace.close();editor.close()
+
+
 def project(tmp_path):
     paths = {}
     for label in 'ABCDE':

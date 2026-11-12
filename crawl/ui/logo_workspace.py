@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal, QItemSelectionModel,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from .logo_canvas import LogoCanvas
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog,QStyle)
+                              QPushButton, QComboBox, QListWidget,QListWidgetItem,QLineEdit, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog,QStyle)
 from .. import ingest
 from .widgets import LogoBar, _spin
 
@@ -68,7 +68,14 @@ class LogoWorkspace(QWidget):
         self._bounds = None
         self._bounds_section = None
         self._layer_cache = {}
-        self.section = QComboBox()
+        self.block_list=QListWidget()
+        self.block_list.setAccessibleName('Logo blocks')
+        self.block_list.setIconSize(QSize(40,40))
+        self.block_list.setMinimumHeight(110);self.block_list.setMaximumHeight(230)
+        self.block_count=QLabel('0');self.block_count.setProperty('role','chip')
+        self.block_search=QLineEdit();self.block_search.setPlaceholderText('Find a logo block…')
+        self.block_search.setClearButtonEnabled(True);self.block_search.hide()
+        self.block_search.textChanged.connect(self._filter_blocks)
         self.preview_mode=QComboBox()
         self.preview_mode.addItem('See in crawl','crawl')
         self.preview_mode.addItem('Arrange logos','arrange')
@@ -82,8 +89,6 @@ class LogoWorkspace(QWidget):
         self.gap.setValue(120)
         self.note = QLabel('Choose a logo section, or add artwork at the selected spreadsheet row.')
         self.note.setWordWrap(True)
-        form = QFormLayout()
-        form.addRow('Logo block', self.section)
         grid=QWidget();grid_form=QFormLayout(grid)
         grid_form.addRow('Logos per row',self.columns)
         grid_form.addRow('Space between columns',self.gap)
@@ -118,12 +123,16 @@ class LogoWorkspace(QWidget):
             buttons.addWidget(button)
         buttons.addStretch(1)
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
+        blocks_header=QHBoxLayout();blocks_header.addWidget(QLabel('Logo blocks'))
+        blocks_header.addWidget(self.block_count);blocks_header.addStretch(1)
+        layout.addLayout(blocks_header);layout.addWidget(self.block_search)
+        layout.addWidget(self.block_list)
         actions=QHBoxLayout();actions.addWidget(add);actions.addWidget(library)
         layout.addLayout(actions)
         layout.addWidget(self.note)
         layout.addWidget(grid_toggle);layout.addWidget(grid)
         grid_form.addRow(apply)
+        layout.addWidget(QLabel('Artwork in selected block'))
         layout.addWidget(self.artwork, 1)
         layout.addLayout(buttons)
         selected_actions=QHBoxLayout();selected_actions.addWidget(replace_button);selected_actions.addWidget(self.remove_button)
@@ -170,7 +179,7 @@ class LogoWorkspace(QWidget):
         self.selection_count=QLabel('Select logos');tools.addWidget(self.selection_count)
         canvas_layout.addWidget(self.view, 1)
         canvas_layout.addWidget(self.inspector)
-        self.section.currentIndexChanged.connect(self._section_changed)
+        self.block_list.currentRowChanged.connect(self._section_changed)
         self.artwork.itemSelectionChanged.connect(self._list_selection)
         self.artwork.order_dropped.connect(self._order_dropped)
         self.view.selection_changed.connect(self._canvas_selection)
@@ -188,7 +197,7 @@ class LogoWorkspace(QWidget):
         self.preview_requested.emit(row,label)
 
     def current(self):
-        index = self.section.currentIndex()
+        index = self.block_list.currentRow()
         return self.sections[index] if 0 <= index < len(self.sections) else None
 
     def select_source_row(self, row):
@@ -196,7 +205,9 @@ class LogoWorkspace(QWidget):
         index=next((i for i,section in enumerate(self.sections) if section['start']<=row<=section['end']),None)
         if index is None:
             return
-        self.section.setCurrentIndex(index)
+        self.block_list.item(index).setHidden(False)
+        self.block_list.setCurrentRow(index)
+        self.block_list.scrollToItem(self.block_list.item(index))
         values=self.editor.rows()[row]
         labels=set(ingest.logo_labels(values[0] or values[1])) if not values[2] else set()
         if labels:
@@ -221,19 +232,38 @@ class LogoWorkspace(QWidget):
                 current = None
                 if row[1] and not row[0] and not row[2]:heading=row[1].replace('\n',' ')
         self.sections = sections
-        self.section.blockSignals(True)
-        self.section.clear()
+        self.block_list.blockSignals(True)
+        self.block_list.clear()
         for item in sections:
             title=item.get('heading') or ', '.join(item['labels'])
-            self.section.addItem(f"{title} · rows {item['start'] + 1}–{item['end'] + 1}")
+            count=len(item['labels'])
+            entry=QListWidgetItem(f"{title}\n{count} logo{'s' if count!=1 else ''}")
+            entry.setToolTip(f"{title}\nRows {item['start']+1}–{item['end']+1}\n"+', '.join(item['labels']))
+            entry.setData(Qt.UserRole,(title+' '+ ' '.join(item['labels'])).casefold())
+            layers=getattr(self.build,'logo_layers',{}) if self.build else {}
+            cached=next((layers.get(label) or self._layer_cache.get(label) for label in item['labels']
+                         if layers.get(label) or self._layer_cache.get(label)),None)
+            entry.setIcon(QIcon(QPixmap.fromImage(cached[1])) if cached else self.style().standardIcon(QStyle.SP_FileIcon))
+            self.block_list.addItem(entry)
         choice = next((i for i, item in enumerate(sections)
                        if previous and set(item['labels']) & set(previous['labels'])), 0)
-        self.section.setCurrentIndex(choice if sections else -1)
-        self.section.blockSignals(False)
+        self.block_list.setCurrentRow(choice if sections else -1)
+        self.block_list.blockSignals(False)
+        self.block_count.setText(str(len(sections)))
+        self.block_count.setToolTip(f'{len(sections)} logo blocks in this project')
+        self.block_search.setVisible(len(sections)>6)
+        if len(sections)<=6:self.block_search.clear()
+        self._filter_blocks(self.block_search.text())
         self._section_changed()
         active_labels=set(self.current()['labels']) if self.current() else set()
         selected &= active_labels
         self._canvas_selection(selected)
+
+    def _filter_blocks(self,value):
+        needle=value.strip().casefold()
+        for index in range(self.block_list.count()):
+            item=self.block_list.item(index)
+            item.setHidden(bool(needle and needle not in item.data(Qt.UserRole)))
 
     def arrangement(self):
         section = self.current()
