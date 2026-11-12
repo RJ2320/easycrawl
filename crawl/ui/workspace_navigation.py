@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,
-                               QPushButton,QGroupBox,QAbstractItemView,QToolButton,QStyle)
+                               QPushButton,QGroupBox,QAbstractItemView,QToolButton,QStyle,QDialog,QDialogButtonBox)
 from ..model import Header,LogoRow
 
 
@@ -42,19 +42,43 @@ class WorkspaceNavigation(QWidget):
         buttons.addWidget(self.reset_style);self.text_tools.append(self.reset_style)
         buttons.addStretch(1)
         layout.addLayout(buttons)
-        row=QHBoxLayout();row.addWidget(QLabel('Jump to section'))
-        self.sections=QComboBox();self.sections.setEditable(True)
+        self.sections=QComboBox(self);self.sections.setEditable(True)
         self.sections.setInsertPolicy(QComboBox.NoInsert)
         self.sections.setPlaceholderText('Find a heading or logo block…')
         self.sections.setMinimumContentsLength(12)
         self.sections.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.sections.completer().setFilterMode(Qt.MatchContains)
-        row.addWidget(self.sections,1);layout.addLayout(row)
-        self.sections.activated.connect(self.jump)
+        self.sections.hide()
+        self.jump_dialog=None
+        self.sections.activated.connect(self._activate_section)
         self.format.clicked.connect(lambda:self.editor.format_dialog())
         self.logos.clicked.connect(lambda:window._show_logo_layout(self.editor.table.currentRow()+1))
         self.editor.table.itemSelectionChanged.connect(self.refresh_selection)
         self.editor.table.currentCellChanged.connect(lambda *_:self.refresh_selection())
+
+    def open_section_dialog(self):
+        if self.jump_dialog is None:
+            self.jump_dialog=QDialog(self.window)
+            self.jump_dialog.setWindowTitle('Jump to section')
+            self.jump_dialog.resize(540,130)
+            layout=QVBoxLayout(self.jump_dialog)
+            layout.addWidget(QLabel('Find a section heading or logo block:'))
+            layout.addWidget(self.sections);self.sections.show()
+            buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+            buttons.button(QDialogButtonBox.Ok).setText('Jump')
+            buttons.accepted.connect(lambda:self._activate_section(self.sections.currentIndex()))
+            buttons.rejected.connect(self.jump_dialog.reject)
+            layout.addWidget(buttons)
+        self.sections.setFocus()
+        self.sections.lineEdit().selectAll()
+        self.jump_dialog.exec()
+
+    def _activate_section(self,index):
+        if self.sections.itemData(index) is None:return
+        self.window._restore_panel_layout()
+        self.window.tabs.setCurrentWidget(self.editor)
+        self.jump(index)
+        if self.jump_dialog:self.jump_dialog.accept()
 
     def refresh(self,crawl):
         if crawl is None:return

@@ -48,7 +48,7 @@ def test_real_import_update_cancel_and_no_changes(app,tmp_path,monkeypatch):
     win=MainWindow(Project(source=first));win._debounce.stop()
     p=win.project
     assert len(p.import_history)==1
-    assert 'first.csv' in win.sheet_editor.import_label.text()
+    assert 'first.csv' in win.subtitle_label.text()
     p.source_url='https://example.com/original'
     monkeypatch.setattr(ChangeDialog,'exec',lambda self: ChangeDialog.Rejected)
     assert win.update_from_sheet(revised) is None
@@ -60,7 +60,7 @@ def test_real_import_update_cancel_and_no_changes(app,tmp_path,monkeypatch):
     assert p.import_history[-1]['applied']==1
     assert p.import_history[-1]['source']==revised and p.source_url==''
     assert p.rows[0][2]=='Ada'
-    assert 'revised.csv' in win.sheet_editor.import_label.text()
+    assert 'revised.csv' in win.subtitle_label.text()
     monkeypatch.setattr(QMessageBox,'information',lambda *args: None)
     win.update_from_sheet(revised)
     assert len(p.import_history)==3 and p.import_history[-1]['action']=='No changes'

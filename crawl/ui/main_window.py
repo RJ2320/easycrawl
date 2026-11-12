@@ -661,7 +661,6 @@ class MainWindow(QMainWindow):
         self.output_panel.fps_requested.connect(self.timing_panel.fps.setEditText)
         self.sheet_editor.changed.connect(self._credits_changed)
         self.sheet_editor.finding_selected.connect(self.jump_to_finding)
-        self.sheet_editor.import_history_requested.connect(self.show_import_history)
         self.sheet_editor.music_style_requested.connect(self._show_music_style)
         self.sheet_editor.logo_layout_requested.connect(self._show_logo_layout)
         self.sheet_editor.preview_requested.connect(self.seek_row)
@@ -794,6 +793,10 @@ class MainWindow(QMainWindow):
         row.setSpacing(8)
         row.addWidget(self.title_label)
         row.addWidget(self.subtitle_label)
+        self.import_history_button=QPushButton('Import history…')
+        self.import_history_button.setToolTip('Review the source spreadsheets, import dates, and revision decisions')
+        self.import_history_button.clicked.connect(self.show_import_history)
+        row.addWidget(self.import_history_button)
         row.addStretch(1)
         self.top_page_buttons={}
         for label,page in [('Look',self.look_tabs),('Timing',self.timing_panel),('Export settings',self.output_panel)]:
@@ -1066,6 +1069,7 @@ class MainWindow(QMainWindow):
         self._act(e, "Find…", QKeySequence.Find, self.find)
 
         v = self.menuBar().addMenu("&View")
+        self._act(v,'Jump to section…','Ctrl+J',self.workspace_navigation.open_section_dialog)
         v.addAction(self.sheet_editor.show_row_types_action)
         v.addSeparator()
         self._act(v, "Play / Pause", "Space", self.preview.toggle_play)
@@ -1144,10 +1148,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{name}[*] — EasyCrawl")
         self.title_label.setText(name.replace(proj.PROJECT_SUFFIX, ""))
         self.subtitle_label.setText(src)
-        self.subtitle_label.setToolTip(self.project.source_url or self.project.source)
-        from .import_history_dialog import latest_import_text,compact_source_text
-        self.sheet_editor.import_label.setText(compact_source_text(self.project))
-        self.sheet_editor.import_label.setToolTip(latest_import_text(self.project)+'\n'+(self.project.source_url or self.project.source))
+        from .import_history_dialog import latest_import_text
+        self.subtitle_label.setToolTip(latest_import_text(self.project)+'\n'+(self.project.source_url or self.project.source))
+        self.import_history_button.setEnabled(bool(self.project.import_history))
         if hasattr(self, "import_options_action"):
             self.import_options_action.setEnabled(bool(self.project.source))
 
