@@ -620,6 +620,18 @@ follow row insertions, deletions and source updates.
 
 ### Compact workspace
 
+**Review…** beside the Credits issue count opens a list filterable by severity
+and issue type, with the section and exact spreadsheet cell for each entry.
+Errors, warnings and informational notes are counted separately. Use **Show in
+credits** to locate an issue or **Dismiss selected issue** after reviewing it.
+
+Project files are explicitly read and written as UTF-8. Suspected garbled text
+appears as a **Text encoding** warning, including text from imported sheets.
+The review shows the current text and any reversible suggested correction;
+**Apply suggested correction** changes only that cell and supports Undo. No
+names are changed automatically. An unreadable replacement character needs a
+manual check against the original source.
+
 **Look**, **Timing**, and **Export settings** are in the top header; the left tabs
 are Credits and Logos. The active header button is highlighted. **View → Jump to
 section…** (Ctrl+J) opens the section finder. Headings and logos span the full

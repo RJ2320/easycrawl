@@ -40,6 +40,8 @@ class Finding:
     # What the finding is about, independent of where it is. Dismissals are
     # stored by key, so they survive inserted rows and lapse if the text changes.
     key: str = ""
+    column: int = -1
+    suggestion: str = ""
 
     def __str__(self) -> str:
         return f"[{self.severity}] row {self.row}: {self.message}"
@@ -52,7 +54,22 @@ def lint(crawl: Crawl, near_dup_ratio: float = 0.88) -> List[Finding]:
     out += _duplicates(crawl)
     out += _near_duplicates(crawl, near_dup_ratio)
     out += _logos(crawl)
+    out += _encoding(crawl)
     out.sort(key=lambda f: f.row)
+    return out
+
+
+def _encoding(crawl):
+    from .encoding_checks import suggest_correction
+    out=[]
+    for row,values in enumerate(crawl.source_rows or []):
+        for column,value in enumerate(values):
+            suggestion=suggest_correction(value)
+            if suggestion is None and '\ufffd' not in value:continue
+            message=('Some characters may have been misread. Review the suggested correction.' if suggestion else
+                     'Text contains an unreadable replacement character. Check the original spreadsheet.')
+            out.append(Finding('encoding','warning',row+1,message,
+                               ('role','header','name')[column],f'encoding|{column}|{value}',column,suggestion or ''))
     return out
 
 

@@ -51,6 +51,7 @@ def _tool(text, tip='', menu=None):
 
 
 class SheetEditor(QWidget):
+    findings_changed = Signal()
     music_style_requested = Signal()
     logo_layout_requested = Signal(int)
     changed = Signal()
@@ -147,6 +148,10 @@ class SheetEditor(QWidget):
         review.addWidget(self.search, 1)
         review.addWidget(self.changes_chip)
         review.addWidget(self.errors_chip)
+        self.review_button=_tool('Review…','Review issues by severity, type, section and cell')
+        self.review_button.clicked.connect(self.open_issue_review)
+        self._issue_review=None
+        review.addWidget(self.review_button)
         review.addWidget(self.previous_error)
         review.addWidget(self.next_error)
 
@@ -1714,6 +1719,7 @@ class SheetEditor(QWidget):
 
     def _finding_cell(self, finding):
         row = finding.row - 1
+        if finding.column>=0:return row,finding.column
         values = [self.table.item(row, col).text() if self.table.item(row, col) else '' for col in range(3)]
         target = finding.target
         if target in ('role', 'list'):
@@ -1753,24 +1759,32 @@ class SheetEditor(QWidget):
         self._apply_filter()
         if self.finding_index >= 0:
             self._show_error_message()
+        self.findings_changed.emit()
+
+    def open_issue_review(self):
+        from .issue_review import IssueReview
+        if self._issue_review is None:self._issue_review=IssueReview(self)
+        self._issue_review.refresh();self._issue_review.show();self._issue_review.raise_();self._issue_review.activateWindow()
 
     def _error_summary(self):
         if not self.findings:
             self._set_chip('No problems', '')
             return
         errors = sum(f.severity == 'error' for f in self.findings)
-        possible = len(self.findings) - errors
+        possible = sum(f.severity=='warning' for f in self.findings)
+        notes = sum(f.severity=='info' for f in self.findings)
         parts = []
         if errors:
             parts.append(f"{errors} error{'s' if errors != 1 else ''}")
         if possible:
             parts.append(f"{possible} warning{'s' if possible != 1 else ''}")
+        if notes:parts.append(f"{notes} note{'s' if notes!=1 else ''}")
         position = f'   {self.finding_index + 1}/{len(self.findings)}' if self.finding_index >= 0 else ''
-        self._set_chip(' · '.join(parts) + position, 'error' if errors else 'warning')
+        self._set_chip(' · '.join(parts) + position, 'error' if errors else 'warning' if possible else '')
 
     def _show_error_message(self):
         finding = self.findings[self.finding_index]
-        label = 'Error' if finding.severity == 'error' else 'Possible problem'
+        label = 'Error' if finding.severity == 'error' else 'Note' if finding.severity=='info' else 'Possible problem'
         self.finding_note.setText(f'{label} · Row {finding.row}: {finding.message}')
         self.dismiss_button.setVisible(bool(finding.key))
         self._finding_bar.setVisible(True)

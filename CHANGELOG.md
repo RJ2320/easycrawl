@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Explicitly read and write project files as UTF-8, accepting UTF-8 byte-order marks and preserving older ASCII-safe projects.
+- Flag possible garbled text and unreadable replacement characters; offer reversible encoding corrections for explicit review.
+- Add a filterable issue review with severity, type, section and exact cell locations, plus undoable suggested corrections.
+- Count informational notes separately from warnings.
+
 ## 0.3.21
 
 - Simplify the workspace with top navigation for Look, Timing and Export settings, compact text tools, and consolidated menus.

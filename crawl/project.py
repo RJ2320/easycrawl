@@ -213,11 +213,11 @@ class Project:
         self._map_paths(d, base, _portable)
         for snapshot in d["snapshots"]:
             self._map_paths(snapshot["state"], base, _portable)
-        Path(path).write_text(json.dumps(d, indent=2))
+        Path(path).write_text(json.dumps(d, indent=2),encoding='utf-8')
 
     @classmethod
     def load(cls, path: str) -> "Project":
-        data = json.loads(Path(path).read_text())
+        data = json.loads(Path(path).read_text(encoding='utf-8-sig'))
         p = cls.from_dict(data)
         base = os.path.dirname(os.path.abspath(path))
         p.source = _absolute(p.source, base)
