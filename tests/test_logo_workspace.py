@@ -69,9 +69,16 @@ def test_workspace_links_grid_undo_and_source_position(tmp_path):
     assert p.arrangements[0]['logo_grid']
     ws.set_build(prepare(p))
     win.tabs.setCurrentWidget(ws)
+    assert win.preview_stack.currentWidget() is win.preview
+    ws.preview_mode.setCurrentIndex(1)
     assert win.preview_stack.currentWidget() is ws.canvas
+    ws.preview_mode.setCurrentIndex(0)
+    assert win.preview_stack.currentWidget() is win.preview
     assert len(ws.view.logos)==5
     ws.artwork.setCurrentRow(0)
+    assert win.preview.view.selected=='A'
+    assert ws.alignment_buttons['left'].isEnabled() is False
+    assert ws.alignment_buttons['distribute_x'].isEnabled() is False
     ws.color_mode.setCurrentIndex(1)
     win._debounce.stop()
     assert p.logo_settings['A']['mode']=='grayscale'

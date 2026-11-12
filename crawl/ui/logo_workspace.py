@@ -2,12 +2,34 @@
 from dataclasses import replace
 from collections import Counter
 
-from PySide6.QtCore import Qt, Signal, QItemSelectionModel
+from PySide6.QtCore import Qt, Signal, QItemSelectionModel,QSize
+from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from .logo_canvas import LogoCanvas
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView)
+                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView,QToolButton)
 from .. import ingest
 from .widgets import LogoBar, _spin
+
+
+def alignment_icon(mode):
+    image=QPixmap(28,28);image.fill(Qt.transparent)
+    painter=QPainter(image);painter.setPen(QPen(QColor('#a9b5c7'),1.5))
+    horizontal=mode in ('left','center_x','right','distribute_x')
+    distribute=mode.startswith('distribute')
+    if not distribute:
+        edge=5 if mode in ('left','top') else 23 if mode in ('right','bottom') else 14
+        if horizontal:painter.drawLine(edge,3,edge,25)
+        else:painter.drawLine(3,edge,25,edge)
+    painter.setBrush(QColor('#dce4ef'));painter.setPen(Qt.NoPen)
+    for i,length in enumerate((11,17,8)):
+        if distribute:
+            if horizontal:painter.drawRect(3+i*9,14-length//2,4,length)
+            else:painter.drawRect(14-length//2,3+i*9,length,4)
+        else:
+            at=edge if mode in ('left','top') else edge-length if mode in ('right','bottom') else edge-length//2
+            if horizontal:painter.drawRect(at,5+i*7,length,4)
+            else:painter.drawRect(5+i*7,at,4,length)
+    painter.end();return QIcon(image)
 
 
 class LogoOrderList(QListWidget):
@@ -35,6 +57,8 @@ class LogoWorkspace(QWidget):
     moved = Signal(str, int, int)
     show_row = Signal(int)
     batch_settings = Signal(dict)
+    preview_requested = Signal(int,str)
+    view_changed = Signal()
 
     def __init__(self, project, sheet_editor, parent=None):
         super().__init__(parent)
@@ -45,6 +69,10 @@ class LogoWorkspace(QWidget):
         self._bounds_section = None
         self._layer_cache = {}
         self.section = QComboBox()
+        self.preview_mode=QComboBox()
+        self.preview_mode.addItem('See in crawl','crawl')
+        self.preview_mode.addItem('Arrange logos','arrange')
+        self.preview_mode.setToolTip('See surrounding credits, or use the focused logo arrangement canvas.')
         self.artwork = LogoOrderList()
         self.artwork.setToolTip("Drag logos up or down to change their order in the credits.")
         self.artwork.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -58,9 +86,13 @@ class LogoWorkspace(QWidget):
         self.note = QLabel('Choose a logo section, or add artwork at the selected spreadsheet row.')
         self.note.setWordWrap(True)
         form = QFormLayout()
-        form.addRow('Credits location', self.section)
-        form.addRow('Columns', self.columns)
-        form.addRow('Column spacing', self.gap)
+        form.addRow('Logo block', self.section)
+        form.addRow('Preview',self.preview_mode)
+        grid=QWidget();grid_form=QFormLayout(grid)
+        grid_form.addRow('Logos per row',self.columns)
+        grid_form.addRow('Space between columns',self.gap)
+        grid_toggle=QPushButton('Grid settings ▸');grid_toggle.setCheckable(True)
+        grid_toggle.toggled.connect(grid.setVisible);grid.hide()
         apply = QPushButton('Apply logo grid')
         apply.clicked.connect(self.apply_grid)
         library = QPushButton('Logo library…')
@@ -86,17 +118,18 @@ class LogoWorkspace(QWidget):
             self.move_buttons[direction] = button
             buttons.addWidget(button)
         layout = QVBoxLayout(self)
-        layout.addWidget(self.note)
         layout.addLayout(form)
-        layout.addWidget(apply)
+        actions=QHBoxLayout();actions.addWidget(add);actions.addWidget(library)
+        layout.addLayout(actions)
+        layout.addWidget(self.note)
+        layout.addWidget(grid_toggle);layout.addWidget(grid)
+        grid_form.addRow(apply)
         layout.addWidget(self.artwork, 1)
         layout.addLayout(buttons)
         layout.addWidget(self.color_mode)
         self.color_mode.currentIndexChanged.connect(self._color_changed)
-        layout.addWidget(replace_button)
-        layout.addWidget(add)
-        layout.addWidget(self.remove_button)
-        layout.addWidget(library)
+        selected_actions=QHBoxLayout();selected_actions.addWidget(replace_button);selected_actions.addWidget(self.remove_button)
+        layout.addLayout(selected_actions)
         layout.addWidget(show)
         self.canvas = QWidget()
         canvas_layout = QVBoxLayout(self.canvas)
@@ -105,22 +138,23 @@ class LogoWorkspace(QWidget):
         self.view = LogoCanvas()
         self.inspector = LogoBar()
         self.inspector.show()
-        caption.setText('Shift/Cmd-click logos to select several, or select them in the list. Drag together; Option bypasses snapping.')
+        caption.setText('Select logos in the list, or Shift-click artwork. Drag to reposition; Alt / Option bypasses snapping.')
         canvas_layout.addWidget(caption)
-        tools = QHBoxLayout()
-        self.align_mode = QComboBox()
-        for label, key in [('Left edges', 'left'), ('Horizontal centers', 'center_x'), ('Right edges', 'right'),
-                           ('Top edges', 'top'), ('Vertical centers', 'center_y'), ('Bottom edges', 'bottom'),
-                           ('Equal horizontal gaps', 'distribute_x'), ('Equal vertical gaps', 'distribute_y')]:
-            self.align_mode.addItem(label, key)
-        self.align_button = QPushButton('Apply to selection')
-        self.align_button.setEnabled(False)
-        self.align_button.clicked.connect(lambda: self.align_selected(self.align_mode.currentData()))
-        tools.addWidget(self.align_mode)
-        tools.addWidget(self.align_button)
-        self.selection_count = QLabel('Select logos to align')
-        tools.addWidget(self.selection_count)
-        canvas_layout.addLayout(tools)
+        self.alignment_buttons={}
+        tools=QHBoxLayout()
+        for title,entries in [('Align',[('Align left edges','left'),('Align horizontal centers','center_x'),
+              ('Align right edges','right'),('Align top edges','top'),('Align vertical centers','center_y'),('Align bottom edges','bottom')]),
+              ('Distribute',[('Space evenly left to right','distribute_x'),('Space evenly top to bottom','distribute_y')])]:
+            group=QVBoxLayout();group.addWidget(QLabel(title));icons=QHBoxLayout();icons.setSpacing(2)
+            for label,key in entries:
+                button=QToolButton();button.setIcon(alignment_icon(key));button.setIconSize(QSize(24,24))
+                button.setAccessibleName(label)
+                button.setToolTip(label+'\n'+('Equal gaps; the outer logos stay in place. Select at least three logos.' if key.startswith('distribute') else 'Applies to selected logos only. Select at least two logos.'))
+                button.setEnabled(False);button.clicked.connect(lambda checked=False,key=key:self.align_selected(key))
+                icons.addWidget(button);self.alignment_buttons[key]=button
+            group.addLayout(icons);tools.addLayout(group)
+        tools.addStretch(1);layout.addLayout(tools)
+        self.selection_count=QLabel('Select two or more logos to align');layout.addWidget(self.selection_count)
         canvas_layout.addWidget(self.view, 1)
         canvas_layout.addWidget(self.inspector)
         self.section.currentIndexChanged.connect(self._section_changed)
@@ -130,6 +164,15 @@ class LogoWorkspace(QWidget):
         self.view.group_moved.connect(self.move_selected)
         self.inspector.changed.connect(self.setting_changed)
         self.inspector.auto_requested.connect(self.auto_requested)
+        self.preview_mode.currentIndexChanged.connect(lambda *_:self.view_changed.emit())
+
+    def request_context(self):
+        section=self.current()
+        if not section:return
+        selected=self.artwork.selectedItems()
+        label=selected[0].text() if selected else ''
+        row=next((item.row for item in self.build.layout.logos if item.label==label),section['start']+1) if self.build else section['start']+1
+        self.preview_requested.emit(row,label)
 
     def current(self):
         index = self.section.currentIndex()
@@ -152,26 +195,31 @@ class LogoWorkspace(QWidget):
         previous = self.current()
         selected = {item.text() for item in self.artwork.selectedItems()}
         sections, current = [], None
+        heading=''
         for index, row in enumerate(self.editor.rows()):
             labels = ingest.logo_labels(row[0] or row[1]) if not row[2] else []
             if labels:
                 if current is None:
-                    current = dict(start=index, end=index, labels=[])
+                    current = dict(start=index, end=index, labels=[],heading=heading)
                     sections.append(current)
                 current['end'] = index
                 current['labels'].extend(labels)
             elif any(row):
                 current = None
+                if row[1] and not row[0] and not row[2]:heading=row[1].replace('\n',' ')
         self.sections = sections
         self.section.blockSignals(True)
         self.section.clear()
         for item in sections:
-            self.section.addItem(f"Rows {item['start'] + 1}–{item['end'] + 1} · {len(item['labels'])} logos")
+            title=item.get('heading') or ', '.join(item['labels'])
+            self.section.addItem(f"{title} · rows {item['start'] + 1}–{item['end'] + 1}")
         choice = next((i for i, item in enumerate(sections)
                        if previous and set(item['labels']) & set(previous['labels'])), 0)
         self.section.setCurrentIndex(choice if sections else -1)
         self.section.blockSignals(False)
         self._section_changed()
+        active_labels=set(self.current()['labels']) if self.current() else set()
+        selected &= active_labels
         self._canvas_selection(selected)
 
     def arrangement(self):
@@ -191,10 +239,11 @@ class LogoWorkspace(QWidget):
         self.artwork.blockSignals(False)
         self.columns.setValue(cfg.get('columns', 3))
         self.gap.setValue(cfg.get('gap', 120))
-        self.note.setText('Drag logos in the list to reorder them, or use Move earlier / Move later. Changes appear in the credits.'
+        self.note.setText(f"Add logo inserts after this block (row {section['end']+1}). Drag the list to reorder. Select artwork to adjust it."
                           if section else 'No logo section yet. Add artwork at the selected spreadsheet row.')
         self._draw()
         self.inspector.load('', {})
+        self.request_context()
 
     def _select(self, label):
         self.view.select_logo(label)
@@ -382,15 +431,16 @@ class LogoWorkspace(QWidget):
     def _list_selection(self):
         labels = {item.text() for item in self.artwork.selectedItems()}
         self.view.set_selection(labels)
-        self.selection_count.setText(f'{len(labels)} selected')
+        self.selection_count.setText(f'{len(labels)} logos selected' if labels else 'Select two or more logos to align')
         self.replace_button.setEnabled(len(labels) == 1)
         self.remove_button.setEnabled(bool(labels))
         order = [self.artwork.item(i).text() for i in range(self.artwork.count())]
         for direction,button in self.move_buttons.items():
             button.setEnabled(any(label in labels and 0 <= i+direction < len(order)
                                   and order[i+direction] not in labels for i,label in enumerate(order)))
-        self.align_button.setEnabled(len(labels) >= 2)
+        for key,button in self.alignment_buttons.items():button.setEnabled(len(labels)>=(3 if key.startswith('distribute') else 2))
         self.sync_selection(next(iter(labels)) if len(labels) == 1 else '')
+        self.request_context()
 
     def _canvas_selection(self, labels):
         current = self.artwork.currentItem()

@@ -664,6 +664,8 @@ class MainWindow(QMainWindow):
         self.logo_workspace.batch_settings.connect(self.set_logo_settings_batch)
         self.logo_workspace.changed.connect(self._logo_artwork_changed)
         self.logo_workspace.show_row.connect(self._show_logo_location)
+        self.logo_workspace.view_changed.connect(self._workspace_changed)
+        self.logo_workspace.preview_requested.connect(self._logo_context)
 
         self.sheet_editor.expand_button.clicked.connect(lambda: self._toggle_panel_expansion("sheet"))
         self.preview.expand_button.clicked.connect(lambda: self._toggle_panel_expansion("preview"))
@@ -1977,10 +1979,17 @@ class MainWindow(QMainWindow):
 
     def _workspace_changed(self, *_):
         active = self.tabs.currentWidget() is self.logo_workspace
-        self.preview_stack.setCurrentIndex(1 if active else 0)
+        arranged=active and self.logo_workspace.preview_mode.currentData()=='arrange'
+        self.preview_stack.setCurrentIndex(1 if arranged else 0)
         if active:
             self.preview.play.setChecked(False)
             self.logo_workspace.refresh()
+
+    def _logo_context(self,row,label):
+        if self.tabs.currentWidget() is not self.logo_workspace:return
+        if self.logo_workspace.preview_mode.currentData()!='crawl':return
+        self.seek_row(row)
+        self.preview.view.select_logo(label)
 
     def _show_logo_location(self, row):
         self.tabs.setCurrentWidget(self.sheet_editor)
