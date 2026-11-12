@@ -390,7 +390,7 @@ class SheetEditor(QWidget):
         if bounds is None:
             return
         top, left, bottom, right = bounds
-        if left==0 and any(self.table.logo_column(row) is not None for row in range(top,bottom+1)):
+        if left==0 and any(self.table.full_row_column(row) is not None for row in range(top,bottom+1)):
             right=2
         data = self.rows()
         out = io.StringIO()
@@ -405,7 +405,7 @@ class SheetEditor(QWidget):
 
     def clear_cells(self):
         cells = [(i.row(), i.column()) for i in self.table.selectedIndexes()]
-        cells=[(r,self.table.logo_column(r) if c==0 and self.table.logo_column(r) is not None else c) for r,c in cells]
+        cells=[(r,self.table.full_row_column(r) if c==0 and self.table.full_row_column(r) is not None else c) for r,c in cells]
         cells = [(r, c) for r, c in cells if self.table.item(r, c) and self.table.item(r, c).text()]
         self._set_cells({cell: '' for cell in cells})
 
@@ -425,7 +425,7 @@ class SheetEditor(QWidget):
             # One value into a selection fills it, as in a spreadsheet.
             for index in self.table.selectedIndexes() or [self.table.currentIndex()]:
                 row,column=index.row(),index.column()
-                source=self.table.logo_column(row) if column==0 else None
+                source=self.table.full_row_column(row) if column==0 else None
                 values[(row,source if source is not None else column)] = data[0][0]
         else:
             for r, line in enumerate(data):
@@ -914,6 +914,7 @@ class SheetEditor(QWidget):
             if item.text()!=label:item.setText(label)
             item.setToolTip(kind['description']+'\nChange the category under Layout; edit local styling under Text formatting.')
             item.setForeground(QColor(theme.ACCENT if kind['manual'] and self._show_row_types else theme.MUTED))
+        self.table.sync_centered_rows()
 
     def apply_bold(self, enabled=True):
         from ..text import FontError
@@ -926,6 +927,8 @@ class SheetEditor(QWidget):
         cells = {(index.row(), index.column()) for index in self.table.selectedIndexes()}
         if not cells and self.table.currentRow() >= 0:
             cells.add((self.table.currentRow(), self.table.currentColumn()))
+        cells={(row,self.table.full_row_column(row) if column==0 and self.table.full_row_column(row) is not None else column)
+               for row,column in cells}
         rows = self.rows()
         return {(row,column) for row,column in cells if rows[row][column] and not ingest.logo_labels(rows[row][column])}
 

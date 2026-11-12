@@ -53,3 +53,28 @@ def test_centered_rows_keep_other_columns_visible_when_edited():
     editor.apply_layout([0], 'auto')
     assert editor.table.columnSpan(0, 0) == 1
     editor.close()
+
+
+def test_section_heading_spans_keep_source_column_and_formatting():
+    from PySide6.QtWidgets import QStyleOptionViewItem
+    from PySide6.QtGui import QGuiApplication
+    editor=SheetEditor(Project())
+    editor.load([['','CAMERA DEPARTMENT',''],['Role','','Avery Morgan']])
+    table=editor.table
+    assert table.columnSpan(0,0)==3 and table.columnSpan(1,0)==1
+    table.setCurrentCell(0,0)
+    assert editor._text_cells()=={(0,1)}
+    editor.apply_cell_format({'bold':True})
+    assert editor.project.cell_formats[0]['column']==1
+    delegate=table.itemDelegate();index=table.model().index(0,0)
+    option=QStyleOptionViewItem();delegate.initStyleOption(option,index)
+    assert option.text=='CAMERA DEPARTMENT'
+    cell=delegate.createEditor(table.viewport(),option,index)
+    delegate.setEditorData(cell,index);cell.setPlainText('POST PRODUCTION')
+    delegate.setModelData(cell,table.model(),index)
+    assert editor.rows()[0]==['','POST PRODUCTION','']
+    editor.copy();assert 'POST PRODUCTION' in QGuiApplication.clipboard().text()
+    editor.clear_cells();assert editor.rows()[0]==['','','']
+    editor.undo();assert editor.rows()[0]==['','POST PRODUCTION','']
+    assert table.columnSpan(0,0)==3
+    cell.deleteLater();editor.close()

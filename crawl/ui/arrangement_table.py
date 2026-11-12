@@ -68,11 +68,13 @@ class ArrangementDelegate(QStyledItemDelegate):
 
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
-        logo_column=self.table().logo_column(index.row())
-        if index.column()==0 and logo_column is not None:
-            option.text=self.table().item(index.row(),logo_column).text()
+        source_column=self.table().full_row_column(index.row())
+        if index.column()==0 and source_column is not None:
+            option.text=self.table().item(index.row(),source_column).text()
             option.displayAlignment=Qt.AlignCenter
-            option.palette.setColor(option.palette.ColorRole.Text,QColor(theme.ROW_TYPES['Logos']))
+            kind=self.table().row_kinds.get(index.row(),'Logos')
+            option.palette.setColor(option.palette.ColorRole.Text,QColor(theme.ROW_TYPES.get(kind,theme.ACCENT)))
+            if kind=='Heading':option.font.setWeight(QFont.DemiBold)
         text = index.data() or ""
         if text and self.table().marked_heading_at(index.row()):
             option.font.setWeight(QFont.DemiBold)
@@ -95,7 +97,8 @@ class ArrangementDelegate(QStyledItemDelegate):
                 align={'names_left':Qt.AlignLeft,'names_center':Qt.AlignHCenter,'names_right':Qt.AlignRight}[override['kind']]
             option.displayAlignment=align | Qt.AlignVCenter
         manual = next((item for item in self.table().project.cell_formats
-                       if item['start'] <= index.row() <= item['end'] and item['column'] == index.column()),{})
+                       if item['start'] <= index.row() <= item['end'] and item['column'] ==
+                       (source_column if index.column()==0 and source_column is not None else index.column())),{})
         if 'font' in manual:
             from .. import fonts
             face = fonts.resolve(manual['font']) or fonts.resolve_default(manual['font'])
@@ -172,7 +175,7 @@ class ArrangementDelegate(QStyledItemDelegate):
         return editor
 
     def setEditorData(self, editor, index):
-        column=self.table().logo_column(index.row()) if index.column()==0 else None
+        column=self.table().full_row_column(index.row()) if index.column()==0 else None
         source=index.siblingAtColumn(column) if column is not None else index
         editor.setPlainText(source.data(Qt.EditRole) or "")
         if self.table().typed_edit:
@@ -181,7 +184,7 @@ class ArrangementDelegate(QStyledItemDelegate):
             editor.moveCursor(QTextCursor.End)
 
     def setModelData(self, editor, model, index):
-        column=self.table().logo_column(index.row()) if index.column()==0 else None
+        column=self.table().full_row_column(index.row()) if index.column()==0 else None
         source=index.siblingAtColumn(column) if column is not None else index
         model.setData(source, editor.toPlainText(), Qt.EditRole)
 
@@ -285,7 +288,7 @@ class ArrangementTable(QTableWidget):
 
     def sync_centered_rows(self):
         # Spans are presentation only: all three underlying cells remain intact.
-        wanted = {row for row in range(self.rowCount()) if self.centered_at(row) or self.logo_column(row) is not None}
+        wanted = {row for row in range(self.rowCount()) if self.centered_at(row) or self.full_row_column(row) is not None}
         current = {row for row in range(self.rowCount()) if self.columnSpan(row, 0) > 1}
         if wanted == current:
             return
@@ -294,6 +297,13 @@ class ArrangementTable(QTableWidget):
             self.setSpan(row, 0, 1, 3)
         for row in wanted | current:
             self.resizeRowToContents(row)
+
+    def full_row_column(self,row):
+        logo=self.logo_column(row)
+        if logo is not None:return logo
+        if self.row_kinds.get(row)!='Heading':return None
+        columns=[c for c in range(3) if self.item(row,c) and self.item(row,c).text()]
+        return columns[0] if len(columns)==1 else None
 
     def starts_at(self, row):
         return any(a['start'] == row for a in self.project.arrangements)
