@@ -16,8 +16,7 @@ class WorkspaceNavigation(QWidget):
         buttons=QHBoxLayout()
         self.format=QPushButton('Text formatting…')
         self.logos=QPushButton('Edit logo block…')
-        self.shared=QPushButton('Project style…')
-        buttons.addWidget(self.format);buttons.addWidget(self.logos);buttons.addWidget(self.shared)
+        buttons.addWidget(self.format);buttons.addWidget(self.logos)
         self.text_tools=[]
         bold=QToolButton();bold.setText('B');bold.setCheckable(True)
         font=bold.font();font.setBold(True);bold.setFont(font)
@@ -54,7 +53,6 @@ class WorkspaceNavigation(QWidget):
         self.sections.activated.connect(self.jump)
         self.format.clicked.connect(lambda:self.editor.format_dialog())
         self.logos.clicked.connect(lambda:window._show_logo_layout(self.editor.table.currentRow()+1))
-        self.shared.clicked.connect(self.show_style)
         self.editor.table.itemSelectionChanged.connect(self.refresh_selection)
         self.editor.table.currentCellChanged.connect(lambda *_:self.refresh_selection())
 
@@ -94,16 +92,11 @@ class WorkspaceNavigation(QWidget):
              'Using project text styles. Formatting changes apply to the selected cells.'))
         logo='Logos' in label
         self.format.setVisible(not logo);self.logos.setVisible(logo)
-        self.format.setEnabled(bool(selected));self.shared.setEnabled(row>=0)
+        self.format.setEnabled(bool(selected))
         for tool in self.text_tools:tool.setEnabled(bool(self.editor._text_cells()) and not logo)
         cells=self.editor._text_cells()
         self.bold.setChecked(bool(cells) and all(any(item['start']<=r<=item['end'] and item['column']==c and item.get('bold')
             for item in self.window.project.cell_formats) for r,c in cells))
-
-    def show_style(self):
-        self.window.tabs.setCurrentWidget(self.window.look_tabs)
-        self.window.look_tabs.setCurrentWidget(self.window.look_panel)
-
 
 class StyleDisclosure(QWidget):
     def __init__(self,editor):
