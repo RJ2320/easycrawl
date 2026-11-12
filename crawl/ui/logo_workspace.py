@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal, QItemSelectionModel,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from .logo_canvas import LogoCanvas
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView,QToolButton)
+                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog)
 from .. import ingest
 from .widgets import LogoBar, _spin
 
@@ -156,8 +156,19 @@ class LogoWorkspace(QWidget):
                 button.setEnabled(False);button.clicked.connect(lambda checked=False,key=key:self.align_selected(key))
                 icons.addWidget(button);self.alignment_buttons[key]=button
             group.addLayout(icons);tools.addLayout(group)
+        pair=QVBoxLayout();pair.addWidget(QLabel('Pair'))
+        pair_actions=QHBoxLayout()
+        self.set_gap_button=QPushButton('Set gap…')
+        self.center_pair_button=QPushButton('Center pair')
+        self.set_gap_button.setToolTip('Set the horizontal edge-to-edge gap in output pixels. Keeps the pair’s center and vertical positions.')
+        self.center_pair_button.setToolTip('Center two logos together in the crawl. Keeps their gap and vertical positions.')
+        self.set_gap_button.clicked.connect(self.set_pair_gap)
+        self.center_pair_button.clicked.connect(self.center_pair)
+        for button in (self.set_gap_button,self.center_pair_button):
+            button.setEnabled(False);pair_actions.addWidget(button)
+        pair.addLayout(pair_actions);tools.addLayout(pair)
         tools.addStretch(1)
-        self.selection_count=QLabel('Select two or more logos to align');tools.addWidget(self.selection_count)
+        self.selection_count=QLabel('Select logos');tools.addWidget(self.selection_count)
         canvas_layout.addWidget(self.view, 1)
         canvas_layout.addWidget(self.inspector)
         self.section.currentIndexChanged.connect(self._section_changed)
@@ -434,7 +445,7 @@ class LogoWorkspace(QWidget):
     def _list_selection(self):
         labels = {item.text() for item in self.artwork.selectedItems()}
         self.view.set_selection(labels)
-        self.selection_count.setText(f'{len(labels)} logos selected' if labels else 'Select two or more logos to align')
+        self.selection_count.setText(f'{len(labels)} selected' if labels else 'Select logos')
         self.replace_button.setEnabled(len(labels) == 1)
         self.remove_button.setEnabled(bool(labels))
         order = [self.artwork.item(i).text() for i in range(self.artwork.count())]
@@ -442,6 +453,8 @@ class LogoWorkspace(QWidget):
             button.setEnabled(any(label in labels and 0 <= i+direction < len(order)
                                   and order[i+direction] not in labels for i,label in enumerate(order)))
         for key,button in self.alignment_buttons.items():button.setEnabled(len(labels)>=(3 if key.startswith('distribute') else 2))
+        self.set_gap_button.setEnabled(len(labels)==2)
+        self.center_pair_button.setEnabled(len(labels)==2)
         self.sync_selection(next(iter(labels)) if len(labels) == 1 else '')
         self.request_context()
 
@@ -503,3 +516,32 @@ class LogoWorkspace(QWidget):
         changes = {item.label: {offset:int(self.project.logo_settings.get(item.label,{}).get(offset,0))
                                +positions[item.label]-getattr(item,axis)} for item in items}
         self.batch_settings.emit(changes)
+
+    def _selected_pair(self):
+        if self.view.busy:return []
+        items=sorted((item for item in self.view.logos if item.label in self.view.selection),key=lambda item:item.x)
+        return items if len(items)==2 else []
+
+    def _place_pair(self,items,positions):
+        changes={item.label:{'dx':int(self.project.logo_settings.get(item.label,{}).get('dx',0))+round(x)-item.x}
+                 for item,x in zip(items,positions)}
+        self.batch_settings.emit(changes)
+
+    def set_pair_gap(self):
+        items=self._selected_pair()
+        if not items:return
+        left,right=items
+        current=max(0,right.x-left.x-left.w)
+        gap,accepted=QInputDialog.getInt(self,'Space between two logos','Horizontal gap between logo edges (output pixels):',
+                                        min(8192,current),0,8192,1)
+        if not accepted:return
+        center=(left.x+right.x+right.w)/2
+        start=round(center-(left.w+gap+right.w)/2)
+        self._place_pair(items,[start,start+left.w+gap])
+
+    def center_pair(self):
+        items=self._selected_pair()
+        if not items:return
+        left,right=items
+        shift=round(self.project.look.center_x-(left.x+right.x+right.w)/2)
+        self._place_pair(items,[left.x+shift,right.x+shift])

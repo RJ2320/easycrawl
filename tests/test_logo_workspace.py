@@ -125,6 +125,33 @@ def test_batch_alignment_preserves_selection_cache_and_single_undo(tmp_path):
     win._unsaved=False;win.setWindowModified(False);win.close()
 
 
+def test_pair_gap_and_center_preserve_size_height_and_undo(tmp_path,monkeypatch):
+    from crawl.ui.main_window import MainWindow
+    from PySide6.QtWidgets import QInputDialog
+    p=project(tmp_path);p.logo_settings={'A':{'dx':-81,'dy':35,'scale':.8}}
+    win=MainWindow(p);win._debounce.stop();ws=win.logo_workspace
+    ws.set_build(prepare(p));ws._canvas_selection({'A','B'})
+    assert ws.set_gap_button.isEnabled() and ws.center_pair_button.isEnabled()
+    old=sorted([item for item in ws.view.logos if item.label in {'A','B'}],key=lambda item:item.x)
+    midpoint=(old[0].x+old[1].x+old[1].w)/2
+    before=len(win.sheet_editor._undo)
+    monkeypatch.setattr(QInputDialog,'getInt',lambda *args:(140,True))
+    ws.set_pair_gap();win._debounce.stop();ws.set_build(prepare(p))
+    pair=ws._selected_pair()
+    assert pair[1].x-pair[0].x-pair[0].w==140
+    assert abs((pair[0].x+pair[1].x+pair[1].w)/2-midpoint)<=.5
+    assert len(win.sheet_editor._undo)==before+1
+    ws.center_pair();win._debounce.stop();ws.set_build(prepare(p))
+    pair=ws._selected_pair()
+    assert abs((pair[0].x+pair[1].x+pair[1].w)/2-p.look.center_x)<=.5
+    assert pair[1].x-pair[0].x-pair[0].w==140
+    for original,item in zip(old,pair):assert (original.y,original.w,original.h)==(item.y,item.w,item.h)
+    win.sheet_editor.undo();win._debounce.stop()
+    win.sheet_editor.undo();win._debounce.stop()
+    assert p.logo_settings=={'A':{'dx':-81,'dy':35,'scale':.8}}
+    win._unsaved=False;win.setWindowModified(False);win.close()
+
+
 def test_vertical_distribution_and_alignment_rebuild_exactly(tmp_path):
     from PySide6.QtWidgets import QApplication
     from crawl.ui.main_window import MainWindow
