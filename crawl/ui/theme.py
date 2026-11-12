@@ -38,6 +38,8 @@ ERROR = "#f0646a"
 WARNING = "#e3aa3d"
 
 SEVERITY = {"error": ERROR, "warning": WARNING, "info": MUTED}
+ROW_TYPES = {'Heading':'#78aee8','Song title':'#b19cda','Music':'#b19cda',
+             'Logos':'#81bcb5','Legal':'#b5a58c','Thanks':'#9cabcf','List':'#9cabcf'}
 
 GRID = 8                 # spacing unit
 RADIUS = 6

@@ -12,7 +12,7 @@ has to walk the whole table to refresh them.
 from PySide6.QtCore import QEvent, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QPen, QTextCursor
 from PySide6.QtWidgets import (QAbstractItemDelegate, QAbstractItemView, QHeaderView, QPlainTextEdit,
-                               QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QToolTip)
+                               QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QToolTip,QStyle)
 
 from .. import ingest
 from . import theme
@@ -112,18 +112,26 @@ class ArrangementDelegate(QStyledItemDelegate):
         if table.starts_at(row):
             opt.rect = opt.rect.adjusted(0, BAND, 0, 0)
         severity = table.error_severity.get((row, col))
+        kind=table.row_kinds.get(row,'')
+        type_color=theme.ROW_TYPES.get(kind)
+        selected=bool(option.state & QStyle.State_Selected)
         tint = None
         if severity:
             tint = theme.color(theme.SEVERITY[severity], 62 if severity == "error" else 38)
         elif row in table.spacer_rows:
             tint = theme.color(theme.ACCENT,40)
+        elif type_color:
+            tint=theme.color(type_color,24 if kind=='Heading' else 12)
         elif table.arrangement_at(row):
             tint = theme.color(theme.ACCENT, 20)
         elif table.override_at(row):
             tint = theme.color("#ffffff", 14)
-        if tint is not None:
+        if tint is not None and not selected:
             painter.fillRect(opt.rect, tint)
         super().paint(painter, opt, index)
+        if kind=='Heading' and not selected:
+            painter.save();painter.setPen(QPen(theme.color(type_color,90),1))
+            painter.drawLine(opt.rect.topLeft(),opt.rect.topRight());painter.restore()
         if severity:
             painter.save()
             painter.setPen(QPen(QColor(theme.SEVERITY[severity]), 1.5))
@@ -134,6 +142,8 @@ class ArrangementDelegate(QStyledItemDelegate):
             painter.fillRect(QRect(opt.rect.left(), opt.rect.top(), 3, opt.rect.height()), QColor(theme.ACCENT))
         elif col == 0 and table.override_at(row):
             painter.fillRect(QRect(opt.rect.left(), opt.rect.top(), 2, opt.rect.height()), QColor(theme.MUTED))
+        elif col==0 and type_color and not severity and not selected:
+            painter.fillRect(QRect(opt.rect.left(),opt.rect.top(),2,opt.rect.height()),theme.color(type_color,125))
 
     def sizeHint(self, option, index):
         size = super().sizeHint(option, index)
@@ -207,6 +217,7 @@ class ArrangementTable(QTableWidget):
         super().__init__(0, 3, parent)
         self.project = project
         self.spacer_rows = set()
+        self.row_kinds = {}
         self.error_cells = set()             # (row, col) with a finding
         self.error_severity = {}             # (row, col) → "error" | "warning" | "info"
         self.tooltip_for = lambda row, col: ""

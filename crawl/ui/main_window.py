@@ -993,9 +993,10 @@ class MainWindow(QMainWindow):
     def _menus(self):
         m = self.menuBar().addMenu("&File")
         self._act(m, "Open Project…", "Ctrl+Shift+O", self.open_project)
-        self._act(m, "Open Sheet…", QKeySequence.Open, self.open_sheet)
-        self._act(m, "Open Google Sheet…", "Ctrl+Shift+G", self.open_google_sheet).setToolTip(
-            "Paste the link of a sheet shared as 'Anyone with the link can view'")
+        self._act(m, "Import Excel / CSV…", QKeySequence.Open, self.open_sheet).setToolTip(
+            'Import the initial credits. For revisions, use Update from Revised Sheet.')
+        self._act(m, "Import Google Sheet…", "Ctrl+Shift+G", self.open_google_sheet).setToolTip(
+            "Link the initial Google spreadsheet. For later changes, use Google Sheet → Refresh from Google Sheet.")
         self.recent_menu = m.addMenu("Recent projects")
         m.addSeparator()
         self._act(m, "Update from Revised Sheet…", "Ctrl+U", self.update_from_sheet).setToolTip(
@@ -1142,9 +1143,9 @@ class MainWindow(QMainWindow):
         self.title_label.setText(name.replace(proj.PROJECT_SUFFIX, ""))
         self.subtitle_label.setText(src)
         self.subtitle_label.setToolTip(self.project.source_url or self.project.source)
-        from .import_history_dialog import latest_import_text
-        self.sheet_editor.import_label.setText(latest_import_text(self.project))
-        self.sheet_editor.import_label.setToolTip(self.project.source_url or self.project.source)
+        from .import_history_dialog import latest_import_text,compact_source_text
+        self.sheet_editor.import_label.setText(compact_source_text(self.project))
+        self.sheet_editor.import_label.setToolTip(latest_import_text(self.project)+'\n'+(self.project.source_url or self.project.source))
         if hasattr(self, "import_options_action"):
             self.import_options_action.setEnabled(bool(self.project.source))
 
@@ -1285,7 +1286,7 @@ class MainWindow(QMainWindow):
         if self.crawl is None or not self.sheet_editor.table.rowCount():
             return "replace"
         box = QMessageBox(self)
-        box.setWindowTitle("Open sheet")
+        box.setWindowTitle("Import sheet")
         box.setText(f"Bring {name} into this crawl?")
         box.setInformativeText("Update keeps your layout, logos and edits and shows what changed. "
                                "Replace starts again from this sheet.")
@@ -1529,7 +1530,7 @@ class MainWindow(QMainWindow):
         """Download a shared Google Sheet and open it like a file."""
         if not url:
             url, ok = QInputDialog.getText(
-                self, "Open Google Sheet",
+                self, "Import Google Sheet",
                 "Paste the sheet's link. It must be shared as \"Anyone with the link\" (Viewer is enough).\n"
                 "The whole workbook is downloaded, so every tab is available.")
             if not ok or not url.strip():

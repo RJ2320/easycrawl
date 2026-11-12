@@ -170,7 +170,7 @@ class SheetEditor(QWidget):
         bar.setContentsMargins(8, 8, 8, 8)
         bar.setSpacing(6)
         self.import_label = QLabel()
-        self.import_label.setWordWrap(True)
+        self.import_label.setWordWrap(False)
         self.import_label.setProperty('role', 'caption')
         history_button = _tool('Import history…', 'See which spreadsheets were brought into this project and when')
         history_button.clicked.connect(self.import_history_requested)
@@ -190,14 +190,14 @@ class SheetEditor(QWidget):
         title = QLabel('No credits yet')
         title.setObjectName('emptyTitle')
         title.setAlignment(Qt.AlignCenter)
-        hint = QLabel('Open the credits sheet (.csv or .xlsx), drop it or a Google Sheets link on the window,\n'
+        hint = QLabel('Import a credits sheet (.csv or .xlsx), drop it or a Google Sheets link on the window,\n'
                       'or start from a blank sheet and type or paste.')
         hint.setProperty('role', 'caption')
         hint.setAlignment(Qt.AlignCenter)
-        open_button = QPushButton('Open sheet…')
+        open_button = QPushButton('Import Excel / CSV…')
         open_button.setProperty('primary', True)
         open_button.clicked.connect(self.open_requested)
-        link_button = QPushButton('Google Sheet…')
+        link_button = QPushButton('Import Google Sheet…')
         link_button.setToolTip('Paste the link of a sheet shared as "Anyone with the link can view"')
         link_button.clicked.connect(self.link_requested)
         blank_button = QPushButton('Start blank')
@@ -894,6 +894,7 @@ class SheetEditor(QWidget):
         if crawl is None:
             crawl=crawl_from_rows(self.project,rows)
         self._row_types=describe_rows(crawl,self.project,self.table.rowCount())
+        self.table.row_kinds={row:kind['label'].removesuffix(' *') for row,kind in enumerate(self._row_types)}
         self.table.spacer_rows={row for row in ingest.hidden_indices(self.project.spacer_rows) if 0<=row<len(rows) and not any(rows[row])}
         header=self.table.verticalHeader()
         width=QFontMetrics(header.font()).horizontalAdvance('9999 · Role / name * ✓')+18 if self._show_row_types else QFontMetrics(header.font()).horizontalAdvance(str(max(1,self.table.rowCount())))+18
