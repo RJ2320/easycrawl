@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.22
 
+- Export whole-crawl or single-section review PDFs from File → Export.
+- Import and revise credits from Word, text-based PDF, Numbers, TSV and plain text files.
+- Identify possible spelling edits, reordered credits and removed headings in revision review.
+- Accept or skip unique credit moves with one checkbox and keep their manual text formatting.
+- Double-click text or artwork in the crawl preview to jump to its source in Credits. Hover over credit text to see its Look style and manual values. Reset individual formatting settings to their section defaults.
 - Explicitly read and write project files as UTF-8, accepting UTF-8 byte-order marks and preserving older ASCII-safe projects.
 - Flag possible garbled text and unreadable replacement characters; offer reversible encoding corrections for explicit review.
 - Add a filterable issue review with severity, type, section and exact cell locations, plus undoable suggested corrections.

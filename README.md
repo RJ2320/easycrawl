@@ -123,11 +123,10 @@ Export, with the preview on the right and the **Export** button always in the he
 
   **Placing a logo by hand** — click it in the preview, then drag (Shift locks to one axis, Alt
   turns off snapping). It snaps to its automatic spot, the frame's centre line and the centres and
-  edges of the other logos, with guide lines. A small inspector floats beside it with X/Y offset,
+  edges of the other logos, with guide lines. The controls above the viewer include X/Y offset,
   Size, **Invert** (for a dark logo on the black crawl) and **Reset**.
 
-  **Greyscale** — select a logo and tick **Greyscale** beside Invert in its inspector, or choose
-  **Greyscale** from the color menu in the Logos workspace. This removes color in the preview
+  **Greyscale** — select a logo and tick **Greyscale** beside Invert above the viewer. This removes color in the preview
   and final export while preserving transparency. Turn it off to restore the original color.
 
   **Levels** — the same inspector has **Black** and **White** points, applied after Invert.
@@ -514,7 +513,7 @@ text. The preview and exports include the override.
 
 The **Text formatting…** toolbar button also overrides font, size,
 font color, line spacing, left/center/right alignment, italic and uppercase for selected text
-cells. Check an option to override it; unchecked options inherit the section style.
+cells. Choose **Custom** to edit a value, or **On** or **Off** for a switch. Choose **Use section default** beside one setting to restore it, then click **OK**. When multiple cells have different values, **Keep mixed values** preserves them.
 Size changes scale line spacing unless line spacing is overridden too. These local
 settings do not change other headings or names. Use **Heading font and styling…**
 in the Special thanks dialog to format just that section's heading.
@@ -579,8 +578,7 @@ gutter and typography. It accepts populated role/name pairs and overrides automa
 or explicit compact music formatting for the selected rows.
 
 **File → Open Project…** resumes a saved crawl. **Recent projects** lists saved
-crawls with their layouts, artwork and timing. To start from a source, use **Import
-Excel / CSV…** or **Import Google Sheet…**. For later revisions, use **Update from
+crawls with their layouts, artwork and timing. To start from a source, use **Import credit file…** or **Import Google Sheet…**. For later revisions, use **Update from
 Revised Sheet…** or **Google Sheet → Refresh from Google Sheet**. Source imports do
 not evict saved projects. **Import history…** beside the source name shows import
 dates and review decisions.
@@ -645,3 +643,17 @@ headings and rows. The viewer toolbar switches between **See in crawl** and
 Pair tools require exactly two selected logos. Distribute requires at least three
 and retains the outer logos. Logo size, position and tone controls sit above the
 viewer. Instructions are available in tooltips.
+
+**File → Export → Review PDF…** saves a paginated visual proof of the whole crawl
+or one section. The proof uses the current layout, fonts, colors and artwork.
+
+**Import credit file…** and **Update from Revised Sheet…** accept Excel, CSV, TSV,
+plain text, Apple Numbers, Word (.docx), and PDFs with selectable text. In Numbers,
+choose the sheet/table containing the credits. Word reads body paragraphs and
+tables in document order. Review the extracted columns for Word and PDF files;
+PDF line breaks and multiple columns depend on the source layout. Scanned pages
+need OCR first. A plain text file uses one row per line or tabs between cells.
+
+Revision review identifies capitalization and possible spelling edits, credits
+that moved, names reordered within a row, and removed section headings. The
+side-by-side comparison shows the actual rows for each decision. An exact, unique credit moving between rows appears as one **Move credit** decision. Its checkbox controls both positions. Ambiguous matches and local conflicts retain their separate review decisions.

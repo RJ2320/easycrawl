@@ -1,4 +1,4 @@
-"""Section navigation and a contextual inspector for the experimental workspace."""
+"""Section navigation and a contextual inspector for the Credits workspace."""
 from PySide6.QtCore import Qt,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,
@@ -12,7 +12,6 @@ class WorkspaceNavigation(QWidget):
         self.window=window
         self.editor=window.sheet_editor
         layout=QVBoxLayout(self);layout.setContentsMargins(10,8,10,4)
-        self.setToolTip('Experimental workspace · local preview')
         buttons=QHBoxLayout()
         self.format=QPushButton('Text formatting…')
         self.logos=QPushButton('Edit logo block…')
@@ -109,16 +108,16 @@ class WorkspaceNavigation(QWidget):
         kind=info[row]['label'] if 0<=row<len(info) else ''
         label=f'Row {row+1} · {kind}' if row>=0 else 'No selection'
         selected=table.selectedIndexes()
-        rows={index.row() for index in selected}
-        styled=any(item['start']<=r<=item['end'] for item in self.window.project.cell_formats for r in rows)
+        cells=self.editor._text_cells()
+        styled=any(item['start']<=r<=item['end'] and item['column']==c
+                   for item in self.window.project.cell_formats for r,c in cells)
         self.format.setToolTip(f'{label} · {len(selected)} selected cells\n'+
             ('Custom text formatting is applied. Other settings inherit the project style.' if styled else
              'Using project text styles. Formatting changes apply to the selected cells.'))
         logo='Logos' in label
         self.format.setVisible(not logo);self.logos.setVisible(logo)
         self.format.setEnabled(bool(selected))
-        for tool in self.text_tools:tool.setEnabled(bool(self.editor._text_cells()) and not logo)
-        cells=self.editor._text_cells()
+        for tool in self.text_tools:tool.setEnabled(bool(cells) and not logo)
         self.bold.setChecked(bool(cells) and all(any(item['start']<=r<=item['end'] and item['column']==c and item.get('bold')
             for item in self.window.project.cell_formats) for r,c in cells))
 

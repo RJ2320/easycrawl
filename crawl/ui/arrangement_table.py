@@ -329,6 +329,8 @@ class ArrangementTable(QTableWidget):
         row, offset, horizontal = anchor
         if row < self.rowCount() and not self.isRowHidden(row):
             bar = self.verticalScrollBar()
+            # A wider column may unwrap this row and shorten it below the old offset.
+            offset = max(offset, 1 - self.rowHeight(row))
             bar.setValue(bar.value() + self.rowViewportPosition(row) - offset)
         self.horizontalScrollBar().setValue(horizontal)
 

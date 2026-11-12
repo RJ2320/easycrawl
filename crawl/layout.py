@@ -35,6 +35,7 @@ class Line:
     target: str = ''
     text_style: Optional[TextStyle] = None  # resolved manual override; shared Look stays unchanged
     ideal_y: Optional[float] = None  # unrounded baseline for spacing / runtime measurement
+    column: int = -1
 
 
 @dataclass
@@ -137,7 +138,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
         L.row_positions.setdefault(row, baseline)
         target = "header" if isinstance(b, Header) else "role" if isinstance(b, Legal) else style.removeprefix("music_")
         L.lines.append(Line(text.display_text(st, s), style, x, baseline, anchor, row, target,
-                            st if st != base_styles[style] else None,y+ascent))
+                            st if st != base_styles[style] else None,y+ascent,column))
         bottom = max(bottom, baseline + descent)
 
     first_group = True
@@ -261,10 +262,11 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
             elif isinstance(b, ListBlock):
                 if column_width and b.flow != 'sheet':
                     for name_index, name in enumerate(b.names):
-                        st = styled('list', b.name_row(name_index))
-                        for line in lines_for('list',name,column_width,b.name_row(name_index)):
+                        column = b.source_columns[name_index] if b.source_columns else None
+                        st = styled('list', b.name_row(name_index), column)
+                        for line in lines_for('list',name,column_width,b.name_row(name_index),column):
                             put(line, "list", 0 if alignment == "left" else look.center_x,
-                                "ls" if alignment == "left" else "ms", pen, b.name_row(name_index))
+                                "ls" if alignment == "left" else "ms", pen, b.name_row(name_index), column)
                             pen += st.leading * flex
                 else:
                     pen = _list(L, b, look, flex, pen, put, styled, lines_for)

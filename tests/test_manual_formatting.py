@@ -172,12 +172,12 @@ def test_manual_style_survives_arrangement_and_resolution_change():
 
 
 def test_format_dialog_applies_heading_font_and_size(monkeypatch):
-    from PySide6.QtWidgets import QDialog, QCheckBox, QDialogButtonBox, QSpinBox
+    from PySide6.QtWidgets import QDialog, QComboBox, QDialogButtonBox, QSpinBox
     from crawl.ui.widgets import FontPicker
     p=Project();e=SheetEditor(p);e.load([['','SPECIAL THANKS','']]);e.table.setCurrentCell(0,1)
     def edit(dialog):
-        for check in dialog.findChildren(QCheckBox):
-            if check.text() in ('Font','Font size'):check.setChecked(True)
+        for key in ('font','size'):
+            dialog.findChild(QComboBox,'mode_'+key).setCurrentText('Custom')
         dialog.findChild(FontPicker,'format_font').set_value(p.look.name.font)
         dialog.findChild(QSpinBox,'format_size').setValue(90)
         dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Ok).click()
@@ -230,13 +230,12 @@ def test_font_color_saves_undoes_and_renders_rgb_without_changing_text(tmp_path)
 
 def test_font_color_picker_applies_selected_color(monkeypatch):
     from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QDialog,QCheckBox,QColorDialog,QDialogButtonBox
+    from PySide6.QtWidgets import QDialog,QComboBox,QColorDialog,QDialogButtonBox
     from crawl.ui.widgets import ColorPicker
     p=Project();e=SheetEditor(p);e.load([['','HEADING','']]);e.table.setCurrentCell(0,1)
     monkeypatch.setattr(QColorDialog,'getColor',lambda *args:QColor('#2878C8'))
     def edit(dialog):
-        check=next(check for check in dialog.findChildren(QCheckBox) if check.text()=='Font color')
-        check.setChecked(True)
+        dialog.findChild(QComboBox,'mode_color').setCurrentText('Custom')
         picker=dialog.findChild(ColorPicker,'format_color');picker.click()
         assert picker.text()=='#2878C8'
         dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Ok).click()
@@ -254,4 +253,24 @@ def test_invalid_font_color_does_not_change_project(color):
     with pytest.raises(ValueError,match='RGB'):
         e.apply_cell_format(dict(color=color))
     assert e._state()==before
+    e.close()
+
+def test_reset_one_setting_preserves_mixed_values(monkeypatch):
+    from PySide6.QtWidgets import QDialog,QComboBox,QDialogButtonBox
+    p=Project();e=SheetEditor(p);e.load([['','','First'],['','','Second']])
+    cells=[(0,2),(1,2)]
+    e.apply_cell_format(dict(size=80,bold=False,alignment='right'),cells=[cells[0]])
+    e.apply_cell_format(dict(size=95,bold=True,alignment='right'),cells=[cells[1]])
+    assert 'bold: off' in e.cell_tooltip(0,2)
+    assert 'font size: 95 px' in e.cell_tooltip(1,2)
+    def edit(dialog):
+        assert dialog.findChild(QComboBox,'mode_size').currentText()=='Keep mixed values'
+        dialog.findChild(QComboBox,'mode_alignment').setCurrentText('Use section default')
+        dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Ok).click()
+    monkeypatch.setattr(QDialog,'exec',edit)
+    e.format_dialog(cells=cells)
+    assert [(v['size'],v['bold']) for v in p.cell_formats]==[(80,False),(95,True)]
+    assert all('alignment' not in v for v in p.cell_formats)
+    e.undo()
+    assert all(v['alignment']=='right' for v in p.cell_formats)
     e.close()

@@ -18,7 +18,8 @@ is marked as a conflict so it gets looked at.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections import Counter
+from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from typing import List, Optional, Sequence, Tuple
 
@@ -35,6 +36,7 @@ class Change:
     conflict: bool = False    # these rows were also edited in the app
     sheet_row: int = 0        # 1-based row in the revised sheet (0 for a removal)
     accepted: bool = True
+    insert_at: Optional[int] = None  # move destination in the original current rows
 
     @property
     def capitalization_only(self):
@@ -44,6 +46,8 @@ class Change:
 
     def describe(self) -> str:
         where = f"row {self.start + 1}" if self.end - self.start <= 1 else f"rows {self.start + 1}–{self.end}"
+        if self.kind == "move":
+            return f"Move {row_text(self.old[0])} from current row {self.start+1} to incoming row {self.sheet_row}"
         if self.kind == "add":
             return f"Add after row {self.start}: " + " / ".join(row_text(r) for r in self.new)
         if self.kind == "remove":
@@ -136,7 +140,7 @@ def diff(base: Optional[Sequence], current: Sequence, new: Sequence) -> List[Cha
             continue
         kind = "add" if not old_rows else "remove" if not new_rows else "change"
         changes.append(Change(kind, start, end, old_rows, new_rows, conflict, n1 + 1 if new_rows else 0))
-    return changes
+    return _pair_moves(changes,current,new)
 
 
 def source_diff(current: Sequence, incoming: Sequence, protected_logos=()) -> List[Change]:
@@ -167,7 +171,58 @@ def source_diff(current: Sequence, incoming: Sequence, protected_logos=()) -> Li
             old, new = current[a:b], incoming[c:d]
             kind = 'add' if not old else 'remove' if not new else 'change'
             result.append(Change(kind,a,b,old,new,False,c+1 if new else 0))
+    return _pair_moves(result,current,incoming)
+
+
+def _pair_moves(changes,current,incoming):
+    """Pair exact, unique rows across independent removal and addition decisions."""
+    old_counts,new_counts=Counter(current),Counter(incoming)
+    removed={row: change.start+i for change in changes if change.kind=="remove" and not change.conflict
+             for i,row in enumerate(change.old)}
+    added={row: (change.start,change.sheet_row+i) for change in changes if change.kind=="add" and not change.conflict
+           for i,row in enumerate(change.new)}
+    moved={row for row in removed.keys() & added.keys() if any(row) and old_counts[row]==new_counts[row]==1}
+    if not moved:
+        return changes
+    result=[]
+    for change in changes:
+        values=change.old if change.kind=="remove" else change.new
+        if change.conflict or change.kind not in ("add","remove") or not any(row in moved for row in values):
+            result.append(change)
+            continue
+        i=0
+        while i<len(values):
+            row=values[i]
+            if row in moved:
+                if change.kind=="remove":
+                    dest,sheet_row=added[row]
+                    result.append(Change("move",removed[row],removed[row]+1,[row],[row],
+                                         sheet_row=sheet_row,insert_at=dest))
+                i+=1
+                continue
+            end=i+1
+            while end<len(values) and values[end] not in moved:
+                end+=1
+            if change.kind=="remove":
+                result.append(replace(change,start=change.start+i,end=change.start+end,old=values[i:end]))
+            else:
+                result.append(replace(change,sheet_row=change.sheet_row+i,new=values[i:end]))
+            i=end
     return result
+
+
+def row_edits(changes):
+    """Expand accepted review decisions into ordered source-coordinate edits."""
+    edits=[]
+    for change in changes:
+        if not change.accepted:
+            continue
+        if change.kind=="move":
+            edits.append(replace(change,kind="remove",new=[]))
+            edits.append(replace(change,kind="add",start=change.insert_at,end=change.insert_at,old=[]))
+        else:
+            edits.append(change)
+    return sorted(edits,key=lambda c:(c.start,c.end,c.sheet_row))
 
 
 @dataclass
@@ -188,7 +243,8 @@ def apply(current: Sequence, changes: Sequence[Change]) -> Tuple[List[List[str]]
     """
     rows = [list(r) for r in _rows(current)]
     shifts: List[Shift] = []
-    for change in sorted((c for c in changes if c.accepted), key=lambda c: (c.start, c.end), reverse=True):
+    edits=row_edits(changes)
+    for change in reversed(edits):
         rows[change.start:change.end] = [list(r) for r in change.new]
         if len(change.old) != len(change.new):
             shifts.append(Shift(list(range(change.start, change.end)), change.start, len(change.new)))
@@ -196,7 +252,7 @@ def apply(current: Sequence, changes: Sequence[Change]) -> Tuple[List[List[str]]
     # Where the changed rows ended up, top to bottom.
     marks: List[Tuple[int, int]] = []
     offset = 0
-    for change in sorted((c for c in changes if c.accepted), key=lambda c: (c.start, c.end)):
+    for change in edits:
         start = change.start + offset
         if change.new:
             marks.append((start, start + len(change.new) - 1))
@@ -216,10 +272,10 @@ def replay(items: List[dict], shifts: Sequence[Shift]) -> None:
 
 def summary(changes: Sequence[Change]) -> str:
     """Counts in a sentence: '3 changed, 2 added, 1 removed (1 also edited here)'."""
-    counts = {"change": 0, "add": 0, "remove": 0}
+    counts = {"change": 0, "add": 0, "remove": 0, "move": 0}
     for c in changes:
         counts[c.kind] += 1
-    parts = [f"{counts['change']} changed", f"{counts['add']} added", f"{counts['remove']} removed"]
+    parts = [f"{counts['change']} changed", f"{counts['add']} added", f"{counts['remove']} removed", f"{counts['move']} moved"]
     text = ", ".join(p for p in parts if not p.startswith("0 ")) or "no differences"
     conflicts = sum(c.conflict for c in changes)
     if conflicts:

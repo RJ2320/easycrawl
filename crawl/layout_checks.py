@@ -13,6 +13,7 @@ class Region:
     row: int
     target: str
     label: str
+    column: int = -1
 
     def contains(self, x, y):
         a, b, c, d = self.box
@@ -44,7 +45,7 @@ def regions(layout, look):
         if boxes:
             box = (min(b[0] for b in boxes), min(b[1] for b in boxes),
                    max(b[2] for b in boxes), max(b[3] for b in boxes))
-            result.append(Region(box, line.row, line.target, line.text))
+            result.append(Region(box, line.row, line.target, line.text, line.column))
     result.extend(Region((lg.x,lg.y,lg.x+lg.w,lg.y+lg.h),lg.row,'logo',lg.label) for lg in layout.logos)
     return result
 

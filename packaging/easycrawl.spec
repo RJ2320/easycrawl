@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 import PySide6
 
-from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files, copy_metadata
 from importlib.metadata import PackageNotFoundError
 
 root = os.path.abspath(os.path.join(SPECPATH, ".."))
@@ -27,7 +27,7 @@ icon = os.path.join(SPECPATH, icon) if os.path.exists(os.path.join(SPECPATH, ico
 license_data = [(os.path.join(root, "LICENSE"), "licenses"),
                 (os.path.join(SPECPATH, "licenses"), "licenses")]
 for dependency in ("Pillow", "numpy", "openpyxl", "fonttools", "certifi", "PySide6",
-                   "PySide6_Essentials", "PySide6_Addons", "shiboken6"):
+                   "numbers-parser", "python-docx", "pypdf", "PySide6_Essentials", "PySide6_Addons", "shiboken6"):
     try:
         license_data += copy_metadata(dependency)
     except PackageNotFoundError:
@@ -42,7 +42,7 @@ a = Analysis(
     binaries=binaries,
     datas=[(os.path.join(root, "examples", "sample_crawl.csv"), "examples"),
            (os.path.join(root, "crawl", "ui", "assets", "icon.png"), "crawl/ui/assets"),
-           *license_data],
+           *collect_data_files("numbers_parser"), *license_data],
     hiddenimports=collect_submodules("crawl"),
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore",
               "PySide6.QtQuick", "PySide6.QtQml", "PySide6.QtMultimedia", "PySide6.QtCharts",
@@ -61,5 +61,5 @@ if sys.platform == "darwin":
     app = BUNDLE(coll, name="EasyCrawl.app", icon=icon, bundle_identifier="app.easycrawl",
                  info_plist={"CFBundleShortVersionString": __version__, "CFBundleVersion": __version__,
                              "NSHighResolutionCapable": True, "LSMinimumSystemVersion": "12.0",
-                             "CFBundleDocumentTypes": [{"CFBundleTypeExtensions": ["json", "csv", "xlsx"],
+                             "CFBundleDocumentTypes": [{"CFBundleTypeExtensions": ["json", "csv", "xlsx", "xlsm", "tsv", "txt", "numbers", "docx", "pdf"],
                                                         "CFBundleTypeRole": "Editor"}]})

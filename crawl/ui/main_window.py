@@ -34,7 +34,7 @@ FPS_CHOICES = [23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0]
 
 RESOLUTIONS = [("UHD 4K", 3840, 2160), ("DCI 4K", 4096, 2160), ("HD", 1920, 1080), ("DCI 2K", 2048, 1080)]
 IMAGE_SUFFIXES = (".png", ".tif", ".tiff", ".jpg", ".jpeg")
-SHEET_SUFFIXES = (".csv", ".xlsx", ".xlsm")
+SHEET_SUFFIXES = ingest.SHEET_SUFFIXES
 RECENT_LIMIT = 8
 WATCH_INTERVAL_MS = 60_000      # how often a Google Sheet is checked for changes
 
@@ -622,7 +622,6 @@ class MainWindow(QMainWindow):
         viewer_layout.addWidget(self.logo_workspace.viewer_toolbar)
         self.logo_workspace.viewer_toolbar.hide()
         self.logo_inspectors=QStackedWidget()
-        self.preview.view.inspector=None
         self.logo_inspectors.addWidget(self.preview.logo_bar)
         self.logo_inspectors.addWidget(self.logo_workspace.inspector)
         viewer_layout.addWidget(self.logo_inspectors)
@@ -667,6 +666,7 @@ class MainWindow(QMainWindow):
         self.sheet_editor.music_style_requested.connect(self._show_music_style)
         self.sheet_editor.logo_layout_requested.connect(self._show_logo_layout)
         self.sheet_editor.preview_requested.connect(self.seek_row)
+        self.preview.view.setToolTip("Double-click a credit or logo to show its source in Credits.")
         self.preview.view.credit_selected.connect(self._select_preview_credit)
         self.sheet_editor.restored.connect(self._history_restored)
         self.sheet_editor.history_changed.connect(self._sync_history)
@@ -736,7 +736,7 @@ class MainWindow(QMainWindow):
         self.setUpdatesEnabled(True)
         QTimer.singleShot(0, lambda: self.sheet_editor.table.restore_scroll_anchor(anchor))
 
-    def _restore_panel_layout(self):
+    def _restore_panel_layout(self, *, restore_scroll=True):
         if self._expanded_panel is None:
             return
         state, sizes, tab, preview, geometry = self._panel_restore
@@ -762,7 +762,8 @@ class MainWindow(QMainWindow):
         self.preview.expand_button.setAccessibleName("Expand crawl preview")
         self.preview.expand_button.setToolTip("Show the crawl preview full screen")
         self.setUpdatesEnabled(True)
-        QTimer.singleShot(0, lambda: self.sheet_editor.table.restore_scroll_anchor(anchor))
+        if restore_scroll:
+            QTimer.singleShot(0, lambda: self.sheet_editor.table.restore_scroll_anchor(anchor))
 
     # ---- header ------------------------------------------------------------
 
@@ -908,6 +909,7 @@ class MainWindow(QMainWindow):
             return
         running=self._exporting() if running is None else running
         self.export_action.setEnabled(self.build is not None and not running)
+        self.review_pdf_action.setEnabled(self.build is not None and not running)
         self.cancel_export_action.setEnabled(running and not getattr(self,'_export_cancel_pending',False))
 
     def _set_chips(self, values):
@@ -999,7 +1001,7 @@ class MainWindow(QMainWindow):
     def _menus(self):
         m = self.menuBar().addMenu("&File")
         self._act(m, "Open Project…", "Ctrl+Shift+O", self.open_project)
-        self._act(m, "Import Excel / CSV…", QKeySequence.Open, self.open_sheet).setToolTip(
+        self._act(m, "Import credit file…", QKeySequence.Open, self.open_sheet).setToolTip(
             'Import the initial credits. For revisions, use Update from Revised Sheet.')
         self._act(m, "Import Google Sheet…", "Ctrl+Shift+G", self.open_google_sheet).setToolTip(
             "Link the initial Google spreadsheet. For later changes, use Google Sheet → Refresh from Google Sheet.")
@@ -1008,27 +1010,25 @@ class MainWindow(QMainWindow):
         self._act(m, "Update from Revised Sheet…", "Ctrl+U", self.update_from_sheet).setToolTip(
             "Review source credit changes while retaining EasyCrawl formatting")
         self._act(m, "Import History…", None, self.show_import_history)
-        self.refresh_action = self._act(m, "Refresh from Google Sheet", "Ctrl+Shift+U",
+        google = m.addMenu("Google Sheet")
+        self.refresh_action = self._act(google, "Refresh from Google Sheet", "Ctrl+Shift+U",
                                         lambda: self._fetch_google(manual=True))
         self.refresh_action.setToolTip("Download the sheet again and review what changed")
-        self.master_source_action = self._act(m, "Google Sheet is master for credit text", None,
+        self.master_source_action = self._act(google, "Google Sheet is master for credit text", None,
             lambda checked: self._set_google_master(checked))
         self.master_source_action.setCheckable(True)
         self.master_source_action.setChecked(self.project.google_sheet_master)
         self.master_source_action.setToolTip("Review all differences against the Google Sheet, including earlier skipped edits and capitalization. All incoming changes start selected.")
-        self.watch_action = self._act(m, "Watch Google Sheet for Changes", None, self._sync_google)
+        self.watch_action = self._act(google, "Watch Google Sheet for Changes", None, self._sync_google)
         self.watch_action.setCheckable(True)
         self.watch_action.setChecked(self._settings().value("google/watch", True, type=bool))
         self.watch_action.setToolTip(f"Check the sheet every {WATCH_INTERVAL_MS // 1000} seconds "
                                      f"and say when it has changed")
-        self.auto_apply_action = self._act(m, "Apply Google Sheet Changes Automatically", None, self._sync_google)
+        self.auto_apply_action = self._act(google, "Apply Google Sheet Changes Automatically", None, self._sync_google)
         self.auto_apply_action.setCheckable(True)
         self.auto_apply_action.setChecked(self._settings().value("google/auto_apply", False, type=bool))
         self.auto_apply_action.setToolTip("Apply changes while watching. In master mode the Google Sheet supplies all credit text; "
                                           "with master mode off, conflicting local text edits are held for review.")
-        google=m.addMenu('Google Sheet')
-        for action in (self.refresh_action,self.master_source_action,self.watch_action,self.auto_apply_action):
-            m.removeAction(action);google.addAction(action)
         self.import_options_action = self._act(m, "Import Options…", None, self.import_options)
         self.import_options_action.setToolTip("Which worksheet, columns and start row the credits are read from")
         self._act(m, "Reload Sheet (discard edits)", QKeySequence.Refresh,
@@ -1041,12 +1041,15 @@ class MainWindow(QMainWindow):
         assets=m.addMenu('Project files')
         self._act(assets, "Collect Files into Project Folder", None, self.collect_files).setToolTip(
             "Copy the sheet and logo artwork next to the project so the folder can be moved or shared")
-        m.addSeparator()
         self._act(assets, "Relink Missing Files…", None, self.relink_files)
         m.addSeparator()
         presets=m.addMenu('Look presets')
         self._act(presets, "Save Look As…", None, self.save_look)
         self._act(presets, "Load Look…", None, self.load_look)
+        m.addSeparator()
+        file_export=m.addMenu("Export")
+        self.review_pdf_action=self._act(file_export, "Review PDF…", None, self.export_review_pdf)
+        self.review_pdf_action.setEnabled(self.build is not None)
         m.addSeparator()
         self._act(m, "Quit", QKeySequence.Quit, self.close)
         self._rebuild_recent_menu()
@@ -1095,12 +1098,40 @@ class MainWindow(QMainWindow):
         self.cancel_export_action.setEnabled(False)
         self._act(r, "Export Settings…", None, lambda: self._open_top_page(self.output_panel))
         r.addSeparator()
+        r.addAction(self.review_pdf_action)
         self._act(r, "Export Credits as CSV…", None, self.sheet_editor.export_csv)
         self._act(r, "Check a Rendered Movie…", None, self.check_movie)
 
         help_menu = self.menuBar().addMenu("&Help")
         self._act(help_menu, "Update EasyCrawl…", None, self.update_app)
         self._sync_export_label()
+
+    def export_review_pdf(self):
+        from .review_pdf import section_choices, write_review
+        build=self.build
+        if build is None:
+            return
+        choices=[("Whole crawl",None), *section_choices(build)]
+        label,ok=QInputDialog.getItem(self,"Export review PDF","Include in the proof",
+                                      [label for label,_ in choices],0,False)
+        if not ok:
+            return
+        project=Path(self.project_path or self.project.source or "Credits")
+        name=project.name.removesuffix(proj.PROJECT_SUFFIX) if self.project_path else project.stem
+        path,_=QFileDialog.getSaveFileName(self,"Export review PDF",str(project.with_name(name+" - Review.pdf")),"PDF files (*.pdf)")
+        if not path:
+            return
+        if not path.lower().endswith(".pdf"):
+            path+=".pdf"
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            write_review(path,build,self.project.look,dict(choices)[label])
+        except Exception as error:
+            QMessageBox.warning(self,"Could not export review PDF",str(error))
+        else:
+            self.statusBar().showMessage("Saved review PDF: "+path,8000)
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def update_app(self):
         if getattr(sys, "frozen", False):
@@ -1215,25 +1246,23 @@ class MainWindow(QMainWindow):
     def _recent(self):
         value = self._settings().value("recent", [])
         paths = [value] if isinstance(value, str) else list(value or [])
-        return [p for p in paths if p and (gsheets.is_link(p) or Path(p).exists())]
+        return [p for p in paths if p and p.endswith(proj.PROJECT_SUFFIX) and Path(p).is_file()]
 
     def _project_recent_name(self, path):
         name = Path(path).name
         return name[:-len(proj.PROJECT_SUFFIX)] if name.endswith(proj.PROJECT_SUFFIX) else Path(path).stem
 
     def _remember(self, path: str):
-        path = gsheets.canonical(path) if gsheets.is_link(path) else str(Path(path).resolve())
-        paths = [path] + [p for p in self._recent() if p != path]
-        # Sources no longer push saved projects out of their own recent list.
-        projects = [p for p in paths if p.endswith(proj.PROJECT_SUFFIX)][:RECENT_LIMIT]
-        sheets = [p for p in paths if not p.endswith(proj.PROJECT_SUFFIX)][:RECENT_LIMIT]
-        keep = set(projects + sheets)
-        self._settings().setValue('recent', [p for p in paths if p in keep])
+        if not path.endswith(proj.PROJECT_SUFFIX):
+            return
+        path = str(Path(path).resolve())
+        projects = [path] + [p for p in self._recent() if p != path]
+        self._settings().setValue('recent', projects[:RECENT_LIMIT])
         self._rebuild_recent_menu()
 
     def _rebuild_recent_menu(self):
         self.recent_menu.clear()
-        projects=[p for p in self._recent() if p.endswith(proj.PROJECT_SUFFIX)]
+        projects=self._recent()
         names=[self._project_recent_name(path) for path in projects]
         for path,name in zip(projects,names):
             if names.count(name)>1:name+=' — '+str(Path(path).parent)
@@ -1281,11 +1310,11 @@ class MainWindow(QMainWindow):
             choice = self._update_or_replace(Path(path).name)
             if choice == "update":
                 self.update_from_sheet(path)
-            elif choice == "replace" and self.load_sheet(path):
-                self._remember(path)
+            elif choice == "replace":
+                self.load_sheet(path, replacement_confirmed=True)
         else:
             QMessageBox.information(self, "Can't open that",
-                                    "Open a credits sheet (.csv, .xlsx), a Google Sheets link, "
+                                    "Open a spreadsheet, Word document, text PDF, or text file, a Google Sheets link, "
                                     "or a project (.crawl.json).")
 
     def _update_or_replace(self, name: str) -> str:
@@ -1305,14 +1334,13 @@ class MainWindow(QMainWindow):
         if box.clickedButton() is update:
             return "update"
         if box.clickedButton() is replace:
-            self.project.rows = None      # the choice was already confirmed
             return "replace"
         return ""
 
     def open_sheet(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Credits sheet", "", "Sheets (*.csv *.xlsx);;All files (*)")
-        if path and self.load_sheet(path):
-            self._remember(path)
+        path, _ = QFileDialog.getOpenFileName(self, "Credits sheet", "", ingest.SOURCE_FILTER)
+        if path:
+            self.load_sheet(path)
 
     def new_blank(self):
         """Start typing with no source file."""
@@ -1332,19 +1360,22 @@ class MainWindow(QMainWindow):
         self.sheet_editor.table.setCurrentCell(0, 0)
         self.sheet_editor.table.setFocus()
 
-    def load_sheet(self, path: str, preserve_edits=False) -> bool:
+    def load_sheet(self, path: str, preserve_edits=False, *, replacement_confirmed=False) -> bool:
         if not path and not (preserve_edits and self.project.rows is not None):
             return False
-        if not preserve_edits and self.project.rows is not None:
+        if not preserve_edits and not replacement_confirmed and self.project.rows is not None:
             if QMessageBox.question(self, "Replace edited credits?",
                     "Loading the sheet replaces the credits edited in this project. Continue?") != QMessageBox.Yes:
                 return False
         fresh = not (preserve_edits and self.project.rows is not None)
+        previous_settings=(self.project.sheet,self.project.columns,self.project.start_row)
         if fresh and path and not self._prepare_import(path):
+            self.project.sheet,self.project.columns,self.project.start_row=previous_settings
             return False
         try:
             rows, notes = proj.read_source(self.project, path) if fresh else (self.project.rows, [])
         except Exception as e:
+            self.project.sheet,self.project.columns,self.project.start_row=previous_settings
             QMessageBox.critical(self, "Can't read sheet", str(e))
             return False
         self.project.source = str(Path(path).resolve()) if path else ""
@@ -1401,7 +1432,7 @@ class MainWindow(QMainWindow):
         if not path:
             start = str(Path(self.project.source).parent) if self.project.source else ""
             path, _ = QFileDialog.getOpenFileName(self, "Revised credits sheet", start,
-                                                  "Sheets (*.csv *.xlsx);;All files (*)")
+                                                  ingest.SOURCE_FILTER)
         if not path:
             return
         import_settings = (self.project.sheet, self.project.columns, self.project.start_row)
@@ -1457,7 +1488,6 @@ class MainWindow(QMainWindow):
         self.sheet_editor.apply_update(new_rows, accepted, notes)
         self._unsaved = True
         self._title()
-        self._remember(self.project.source_url if from_google else path)
         skipped = len(found) - len(accepted)
         self.statusBar().showMessage(f"Updated from {name}: {changes.summary(accepted)}" +
                                      (f"; {skipped} not applied" if skipped else ""))
@@ -1469,7 +1499,11 @@ class MainWindow(QMainWindow):
         """Settle which worksheet, columns and start row `path` is read with,
         asking only when it isn't obvious. False if the user cancelled."""
         p = self.project
-        reason = ""
+        document=Path(path).suffix.lower() in (".pdf",".docx")
+        reason = "Check the extracted text, reading order and credit columns before importing." if document else ""
+        if document and Path(path).suffix.lower()!=Path(p.source).suffix.lower():
+            p.columns=""
+            p.start_row=1
         try:
             if ingest.is_workbook(path):
                 infos = ingest.sheets(path)
@@ -1572,10 +1606,9 @@ class MainWindow(QMainWindow):
                 return
         else:
             self._pending_url = url
-            if not self.load_sheet(path):
+            if not self.load_sheet(path, replacement_confirmed=True):
                 self._pending_url = ""
                 return
-        self._remember(url)
         self._title()
         self._sync_google()
 
@@ -1835,6 +1868,7 @@ class MainWindow(QMainWindow):
         self.schedule_rebuild()
 
     def schedule_rebuild(self):
+        self.sheet_editor.rendered_styles.clear()
         # Reparse so artwork assignments and list-column changes reach the build.
         if self.crawl is not None:
             self.crawl = proj.crawl_from_rows(self.project, self.sheet_editor.rows())
@@ -1882,6 +1916,7 @@ class MainWindow(QMainWindow):
         if self._dirty or self._debounce.isActive():
             return
         self.build = build
+        self.sheet_editor.rendered_styles = {(line.row - 1, line.column): line.style for line in build.layout.lines}
         self.workspace_navigation.refresh(build.crawl)
         s, t, look = build.solution, self.project.timing, self.project.look
         self.timing_panel.show_result(build)
@@ -1903,18 +1938,26 @@ class MainWindow(QMainWindow):
         if sticky:self.statusBar().showMessage(sticky,6000)
         else:self.statusBar().clearMessage()
 
-    def _select_preview_credit(self, row, target):
+    def _select_preview_credit(self, row, target, column, jump):
         from ..lint import Finding
         editor = self.sheet_editor
         if not self.build or not 1 <= row <= editor.table.rowCount():
             return
+        if not jump and (self.tabs.currentWidget() is not editor or self._expanded_panel):
+            return
         self.preview.play.setChecked(False)
+        if jump:
+            self._restore_panel_layout(restore_scroll=False)
         self.tabs.setCurrentWidget(editor)
-        r,c = editor._finding_cell(Finding('selection','info',row,'',target))
+        r,c = editor._finding_cell(Finding('selection','info',row,'',target,column=column))
+        if editor.table.columnSpan(r,0) > 1:
+            c = 0
         editor.table.setRowHidden(r, False)
         editor.table.clearSelection()
         editor._select_cell(r,c)
         editor.table.scrollToItem(editor.table.item(r,c), QAbstractItemView.PositionAtCenter)
+        if jump:
+            editor.table.setFocus()
 
     def _row_frame(self, build: proj.Build, y: int) -> int:
         """The frame at which content row `y` is centred in the frame."""
@@ -1981,7 +2024,6 @@ class MainWindow(QMainWindow):
             self.preview.play.setChecked(False)
         self.preview.logo_bar.load(label, self.project.logo_settings.get(label, {}))
         self.logo_inspectors.setVisible(bool(label))
-        self.preview.view.place_inspector()
 
     def _logo_moved(self, label: str, dx: int, dy: int):
         cfg = self.project.logo_settings.get(label, {})

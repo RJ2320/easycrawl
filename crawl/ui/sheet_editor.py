@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 
 from .. import arrangements, ingest
 from .arrangement_table import ArrangementTable
-from .widgets import _spin, panel_expand_icon, resettable, default_look, FontPicker, ColorPicker
+from .widgets import _spin, _dspin, panel_expand_icon, resettable, default_look, FontPicker, ColorPicker
 
 LAYOUT_LABELS = {
     'auto': 'Automatic (6+ rows become a list, fewer are roles)',
@@ -69,6 +69,7 @@ class SheetEditor(QWidget):
         self.project = project
         self._show_row_types = True
         self._row_types = []
+        self.rendered_styles = {}
         self.findings = []
         self.finding_index = -1
         self._resume_error_row = None
@@ -187,11 +188,11 @@ class SheetEditor(QWidget):
         title = QLabel('No credits yet')
         title.setObjectName('emptyTitle')
         title.setAlignment(Qt.AlignCenter)
-        hint = QLabel('Import a credits sheet (.csv or .xlsx), drop it or a Google Sheets link on the window,\n'
+        hint = QLabel('Import a spreadsheet or credit document, drop it or a Google Sheets link on the window,\n'
                       'or start from a blank sheet and type or paste.')
         hint.setProperty('role', 'caption')
         hint.setAlignment(Qt.AlignCenter)
-        open_button = QPushButton('Import Excel / CSV…')
+        open_button = QPushButton('Import credit file…')
         open_button.setProperty('primary', True)
         open_button.clicked.connect(self.open_requested)
         link_button = QPushButton('Import Google Sheet…')
@@ -823,10 +824,11 @@ class SheetEditor(QWidget):
         menu.addSeparator()
         music=menu.addAction('Music…',self.music_dialog)
         music.setCheckable(True);music.setData('music')
-        menu.addSeparator()
-        if not context:menu.addAction(self.arrange_action)
-        advanced=menu.addAction('Name list in columns…',lambda:self._apply_layout_to_selection('list'))
-        advanced.setCheckable(True);advanced.setData('list')
+        if not context:
+            menu.addSeparator()
+            menu.addAction(self.arrange_action)
+            advanced=menu.addAction('Name list in columns…',lambda:self._apply_layout_to_selection('list'))
+            advanced.setCheckable(True);advanced.setData('list')
         def update():
             row=self.table.currentRow()
             current=self.override_at(row)
@@ -857,7 +859,6 @@ class SheetEditor(QWidget):
                         action.setVisible(valid)
             if context:
                 names.menuAction().setVisible(any(action.isVisible() for action in names.actions()))
-                advanced.setVisible(False)
         menu.aboutToShow.connect(update)
         update()
 
@@ -901,10 +902,15 @@ class SheetEditor(QWidget):
         cells = {(index.row(), index.column()) for index in self.table.selectedIndexes()}
         if not cells and self.table.currentRow() >= 0:
             cells.add((self.table.currentRow(), self.table.currentColumn()))
-        cells={(row,self.table.full_row_column(row) if column==0 and self.table.full_row_column(row) is not None else column)
-               for row,column in cells}
-        rows = self.rows()
-        return {(row,column) for row,column in cells if rows[row][column] and not ingest.logo_labels(rows[row][column])}
+        result = set()
+        for row,column in cells:
+            source = self.table.full_row_column(row) if column == 0 else None
+            if source is not None:
+                column = source
+            item = self.table.item(row,column)
+            if item and item.text() and not ingest.logo_labels(item.text()):
+                result.add((row,column))
+        return result
 
     def apply_cell_format(self, options, *, cells=None, reset=False):
         from .. import text
@@ -984,10 +990,17 @@ class SheetEditor(QWidget):
                    for row,column in cells]
         dialog=QDialog(self);dialog.setWindowTitle('Format selected cells')
         layout=QVBoxLayout(dialog)
-        note=QLabel(f'{len(cells)} text cell(s). Checked options override the section style.\n'
-                    'Unchecked options follow the section defaults. Credit text and Google Sheets stay unchanged.')
+        note=QLabel('Choose Use section default beside any setting to reset just that setting. '
+                    'Mixed values stay as they are until you change them.')
         note.setWordWrap(True);layout.addWidget(note)
-        form=QFormLayout(); controls={}
+        form=QFormLayout()
+        controls={}
+        mixed=object()
+
+        def current_value(key):
+            first=current[0].get(key)
+            return first if all(item.get(key)==first for item in current) else mixed
+
         font=FontPicker();font.set_value(current[0].get('font',base.font))
         size=_spin(1,2000,' px');size.setValue(current[0].get('size',base.size))
         leading=_spin(1,2000,' px');leading.setValue(current[0].get('leading',base.leading))
@@ -995,29 +1008,66 @@ class SheetEditor(QWidget):
         alignment=QComboBox()
         for label,value in [('Left','left'),('Center','center'),('Right','right')]:alignment.addItem(label,value)
         alignment.setCurrentIndex(alignment.findData(current[0].get('alignment','center')))
-        for key,label,widget in [('font','Font',font),('size','Font size',size),('color','Font color',color),('leading','Line spacing',leading),('alignment','Alignment',alignment)]:
+        tracking=_dspin(-20,60,0.5,' px')
+        tracking.setValue(current[0].get('tracking',base.tracking))
+        for key,label,widget in [('font','Font',font),('size','Font size',size),('color','Font color',color),
+                                 ('leading','Line spacing',leading),('tracking','Letter spacing',tracking),
+                                 ('alignment','Alignment',alignment)]:
             widget.setObjectName('format_' + key)
-            enabled=QCheckBox(label)
-            enabled.setChecked(all(key in item and item[key]==current[0].get(key) for item in current))
-            widget.setEnabled(enabled.isChecked());enabled.toggled.connect(widget.setEnabled)
-            form.addRow(enabled,widget);controls[key]=(enabled,widget)
+            mode=QComboBox()
+            mode.setObjectName('mode_' + key)
+            mode.setAccessibleName(label + ' source')
+            value=current_value(key)
+            if value is mixed:
+                mode.addItem('Keep mixed values','mixed')
+            mode.addItem('Use section default','default')
+            mode.addItem('Custom','custom')
+            mode.setCurrentIndex(mode.findData('mixed' if value is mixed else 'default' if value is None else 'custom'))
+            widget.setEnabled(mode.currentData()=='custom')
+            mode.currentIndexChanged.connect(lambda _,m=mode,w=widget:w.setEnabled(m.currentData()=='custom'))
+            row=QHBoxLayout();row.addWidget(mode);row.addWidget(widget,1)
+            form.addRow(label,row)
+            controls[key]=(mode,widget)
         for key,label in [('bold','Bold'),('italic','Italic'),('uppercase','Uppercase'),('wrap','Wrap text')]:
-            value=QComboBox();value.addItem('Use section default',None);value.addItem('On',True);value.addItem('Off',False)
-            value.setObjectName('format_' + key)
-            if all(key in item and item[key]==current[0].get(key) for item in current):
-                value.setCurrentIndex(1 if current[0][key] else 2)
-            form.addRow(label,value);controls[key]=(None,value)
+            combo=QComboBox()
+            combo.setObjectName('format_' + key)
+            value=current_value(key)
+            if value is mixed:
+                combo.addItem('Keep mixed values','mixed')
+            combo.addItem('Use section default',None);combo.addItem('On',True);combo.addItem('Off',False)
+            combo.setCurrentText('Keep mixed values' if value is mixed else 'Use section default' if value is None else 'On' if value else 'Off')
+            form.addRow(label,combo);controls[key]=(combo,None)
         layout.addLayout(form)
         hint=QLabel('Wrap text fits long entries inside their column. For an exact line break, edit the cell and press Alt+Enter.\n'
                     'Font size scales line spacing unless you override line spacing too. Alignment stays within the credit’s column.')
         hint.setWordWrap(True);layout.addWidget(hint)
         buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        reset=buttons.addButton('Use section defaults',QDialogButtonBox.ResetRole)
-        reset.clicked.connect(lambda:(self.apply_cell_format({},cells=cells,reset=True),dialog.accept()))
+        reset=buttons.addButton('Reset all to section defaults',QDialogButtonBox.ResetRole)
+        def reset_all():
+            for mode,_ in controls.values():
+                mode.setCurrentText('Use section default')
+        reset.clicked.connect(reset_all)
+
+        def selection(key):
+            mode,widget=controls[key]
+            choice=mode.currentData()
+            if choice=='mixed':
+                return mixed
+            if widget is None:
+                return choice
+            if choice=='default':
+                return None
+            return widget.currentData() if key=='alignment' else widget.value()
+        initial={key:selection(key) for key in controls}
         def accept():
             options={}
-            for key,(enabled,widget) in controls.items():
-                options[key] = (widget.value() if key in ('font','size','leading','color') else widget.currentData()) if enabled is None or enabled.isChecked() else None
+            for key in controls:
+                value=selection(key)
+                if value is not mixed and value!=initial[key]:
+                    options[key]=value
+            if not options:
+                dialog.accept()
+                return
             try:
                 self.apply_cell_format(options,cells=cells)
             except (ValueError,FontError) as error:
@@ -1071,6 +1121,16 @@ class SheetEditor(QWidget):
 
     def cell_tooltip(self, row, col):
         tips = []
+        if col == 0 and self.table.columnSpan(row,0) > 1:
+            source = self.table.full_row_column(row)
+            if source is not None:
+                col = source
+        style = self.rendered_styles.get((row,col))
+        if style:
+            labels = {'header':'Section headings', 'name':'Name', 'role':'Role / job title',
+                      'song':'Song title', 'music_role':'Music role', 'music_name':'Music name',
+                      'list':'Thanks / partner names', 'legal':'Legal / copyright'}
+            tips.append(f"Uses {labels[style]} style")
         if row<len(self._row_types):
             tips.append(self._row_types[row]['description'])
         current = self.table.arrangement_at(row)
@@ -1081,8 +1141,25 @@ class SheetEditor(QWidget):
         override = self.override_at(row)
         if override:
             tips.append(f"Layout: {LAYOUT_LABELS[override['kind']]}")
-        if any(item['start'] <= row <= item['end'] and item['column'] == col for item in self.project.cell_formats):
-            tips.append('Manual styling — use Text formatting or the reset icon above Credits')
+        overrides = next((item for item in self.project.cell_formats
+                          if item['start'] <= row <= item['end'] and item['column'] == col), {})
+        fields = {'font':'font', 'size':'font size', 'color':'font color', 'bold':'bold',
+                  'italic':'italic', 'uppercase':'uppercase', 'alignment':'alignment',
+                  'leading':'line spacing', 'tracking':'letter spacing', 'wrap':'text wrapping'}
+        manual = []
+        for key,label in fields.items():
+            if key not in overrides:
+                continue
+            value = overrides[key]
+            if key == 'color':
+                value = QColor.fromRgbF(*value).name().upper()
+            elif isinstance(value,bool):
+                value = 'on' if value else 'off'
+            elif key in ('size','leading','tracking'):
+                value = f'{value:g} px'
+            manual.append(f'{label}: {value}')
+        if manual:
+            tips.append('Set manually: ' + ', '.join(manual))
         mark = next((m for m in self.table.change_marks if m['start'] <= row <= m['end']), None)
         if mark:
             tips.append('Changed by the last sheet update' + (f" — was: {mark['was']}" if mark.get('was') else ''))
@@ -1674,6 +1751,9 @@ class SheetEditor(QWidget):
         snapshot the next revision is compared against.
         """
         from .. import changes
+        moved_formats = {c.sheet_row: [dict(item) for item in self.project.cell_formats
+                                       if item['start'] <= c.start <= item['end']]
+                         for c in accepted if c.accepted and c.kind == 'move'}
         rows, shifts, marks = changes.apply(self.rows(), accepted)
         self.table.change_marks[:] = []
         for ranges in (self.project.arrangements, self.project.overrides, self.project.cell_formats, self.project.import_notes, self.project.music_blocks):
@@ -1683,8 +1763,24 @@ class SheetEditor(QWidget):
             for k in range(shift.inserted):
                 ingest.insert_hidden_row(self.project.spacer_rows,shift.inserted_at+k)
         # What each marked row used to say, for its tooltip.
-        ordered = sorted(accepted, key=lambda c: (c.start, c.end))
+        ordered = changes.row_edits(accepted)
         with_new = [c for c in ordered if c.new]
+        for (destination,_),change in zip(marks,with_new):
+            if change.insert_at is None or change.sheet_row not in moved_formats:
+                continue
+            # Manual cell styles travel with the credit; adjacent section ranges
+            # keep their normal insert/delete behavior.
+            kept=[]
+            for item in self.project.cell_formats:
+                if not item['start'] <= destination <= item['end']:
+                    kept.append(item)
+                    continue
+                if item['start'] < destination:
+                    kept.append(dict(item,end=destination-1))
+                if destination < item['end']:
+                    kept.append(dict(item,start=destination+1))
+            kept.extend(dict(item,start=destination,end=destination) for item in moved_formats[change.sheet_row])
+            self.project.cell_formats[:]=kept
         self.table.change_marks[:] = [
             dict(start=a, end=b, was=' / '.join(changes.row_text(r) for r in c.old) if c.old else '')
             for (a, b), c in zip(marks, with_new)]

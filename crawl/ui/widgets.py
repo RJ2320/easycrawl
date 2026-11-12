@@ -294,7 +294,7 @@ class _FrameViewMixin:
     the owner stores the offset and rebuilds.
     """
 
-    credit_selected = Signal(int, str)
+    credit_selected = Signal(int, str, int, bool)
     logo_selected = Signal(str)          # label, or "" when the selection is cleared
     logo_moved = Signal(str, int, int)   # label, dx, dy to add to its offset
     nudge = Signal(int)                  # arrow keys: frames to step
@@ -310,7 +310,6 @@ class _FrameViewMixin:
         self.hit_regions = []
         self.logos: list = []            # layout.LogoItem, in content px
         self.selected = ""
-        self.inspector: Optional[QWidget] = None   # floats beside the selected logo
         self._press: Optional[QPointF] = None
         self._drag = (0, 0)              # delivery px, shown until the rebuild lands
         self._guides: list = []          # ("v", x) / ("h", content y) snap lines, delivery px
@@ -339,7 +338,6 @@ class _FrameViewMixin:
 
     def set_frame(self, f: int):
         self.frame = f
-        self.place_inspector()
         self.update()
 
     def set_busy(self, on: bool):
@@ -354,7 +352,6 @@ class _FrameViewMixin:
         if self.selected and not any(lg.label == self.selected for lg in self.logos):
             self.selected = ""
             self.logo_selected.emit("")
-        self.place_inspector()
         self.update()
 
     def select_logo(self, label: str):
@@ -362,7 +359,6 @@ class _FrameViewMixin:
             self.selected = label
             self._drag = (0, 0)
             self.logo_selected.emit(label)
-            self.place_inspector()
             self.update()
 
     def sizeHint(self) -> QSize:
@@ -398,34 +394,6 @@ class _FrameViewMixin:
     def _selected_item(self):
         return next((lg for lg in self.logos if lg.label == self.selected), None)
 
-    def place_inspector(self):
-        """Float the inspector just under (or over) the selected logo, inside the view."""
-        ins = self.inspector
-        if ins is None:
-            return
-        sel = self._selected_item()
-        ox, oy, w, h, _, _ = self._geom()
-        if sel is None or self._press is not None:
-            ins.hide()
-            return
-        r = self.logo_rect(sel, self._drag)
-        if r.bottom() < oy or r.top() > oy + h:
-            ins.hide()
-            return
-        ins.adjustSize()
-        iw, ih = ins.width(), ins.height()
-        x = min(max(8, r.center().x() - iw / 2), max(8, self.width() - iw - 8))
-        y = r.bottom() + 10
-        if y + ih > self.height() - 8:
-            y = r.top() - ih - 10
-        ins.move(int(x), int(max(8, y)))
-        ins.show()
-        ins.raise_()
-
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        self.place_inspector()
-
     # ---- keyboard ----------------------------------------------------------
 
     def keyPressEvent(self, ev):
@@ -446,6 +414,15 @@ class _FrameViewMixin:
 
     # ---- mouse -------------------------------------------------------------
 
+    def mouseDoubleClickEvent(self, ev):
+        region = self.credit_at(ev.position()) if ev.button() == Qt.LeftButton else None
+        if region and region.row > 0:
+            self._press = None
+            self.credit_selected.emit(region.row, region.target, region.column, True)
+            ev.accept()
+        else:
+            super().mouseDoubleClickEvent(ev)
+
     def credit_at(self, pos):
         if self.busy or self.strip is None:
             return None
@@ -461,7 +438,7 @@ class _FrameViewMixin:
         self.setFocus()
         region = self.credit_at(ev.position())
         if region and region.row > 0:
-            self.credit_selected.emit(region.row, region.target)
+            self.credit_selected.emit(region.row, region.target, region.column, False)
         lg = self.logo_at(ev.position())
         self._drag = (0, 0)
         self.select_logo(lg.label if lg else "")
@@ -482,7 +459,6 @@ class _FrameViewMixin:
             dx, dy = self._snap(dx, dy, SNAP_PX / k)
         self._drag = (dx, dy)
         self.setCursor(Qt.ClosedHandCursor)
-        self.place_inspector()          # hidden while dragging
         self.update()
 
     def _snap(self, dx: int, dy: int, reach: float):
@@ -522,7 +498,6 @@ class _FrameViewMixin:
         self._press = None
         self._guides = []
         self.setCursor(Qt.OpenHandCursor)
-        self.place_inspector()
         self.update()
         if self._drag != (0, 0) and self.selected:
             # Keep showing the ghost until set_logos() delivers the new layout.
@@ -625,7 +600,7 @@ class _FrameViewMixin:
             p.setFont(f)
             p.setPen(QColor(theme.MUTED))
             p.drawText(target.adjusted(0, 16, 0, 16), Qt.AlignCenter,
-                       ".csv or .xlsx — or a .crawl.json project")
+                       "Spreadsheet, credit document or EasyCrawl project")
 
     def _paint_pill(self, p: QPainter, target: QRect, label: str):
         p.setRenderHint(QPainter.Antialiasing, True)
@@ -650,7 +625,7 @@ class FrameView(_FrameViewMixin, QWidget):
 
 
 class LogoBar(QFrame):
-    """Exact values for the logo selected in the preview. Floats beside it."""
+    """Exact values for the logo selected in the preview. Shown above the viewer."""
 
     changed = Signal(str, dict)   # label, {invert, scale, dx, dy, black, white}
     auto_requested = Signal(str)  # label: pick the black point from the artwork's background
@@ -944,13 +919,12 @@ def panel_expand_icon(restoring=False):
 
 
 class PreviewPanel(QWidget):
-    """The frame, the logo inspector that floats over it, and the transport."""
+    """The frame, its logo controls, and the transport."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.view = create_frame_view()
-        self.logo_bar = LogoBar(self.view)
-        self.view.inspector = self.logo_bar
+        self.logo_bar = LogoBar(self)
 
         self.slider = Timeline()
         self.slider.setRange(0, 0)

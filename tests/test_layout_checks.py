@@ -40,7 +40,9 @@ def test_preview_click_selects_source_without_seeking():
     from PySide6.QtGui import QMouseEvent
     from crawl.ui.main_window import MainWindow
     app=QApplication.instance() or QApplication([])
-    p=Project(rows=[['Director','','Alice'],['','',''],['Producer','','Bob']])
+    p=Project(rows=[['Director','','Alice'],['','Crew',''],['Producer','','Bob']],
+              cell_formats=[dict(start=1,end=1,column=1,alignment='center'),
+                            dict(start=2,end=2,column=2,bold=False)])
     p.timing.mode='manual'
     win=MainWindow(p)
     win._debounce.stop()
@@ -59,6 +61,19 @@ def test_preview_click_selects_source_without_seeking():
     assert win.sheet_editor.table.currentRow()==2
     assert win.sheet_editor.table.currentColumn()==2
     assert win.preview.slider.value()==before
+    editor = win.sheet_editor
+    assert 'Uses Name style' in editor.cell_tooltip(2,2)
+    assert 'Set manually: bold' in editor.cell_tooltip(2,2)
+    assert 'Set manually' not in editor.cell_tooltip(2,0)
+    assert 'Uses Section headings style' in editor.cell_tooltip(1,0)
+    assert 'Set manually: alignment' in editor.cell_tooltip(1,0)
+    win.tabs.setCurrentWidget(win.logo_workspace)
+    view.mousePressEvent(QMouseEvent(QEvent.MouseButtonPress,point,point,Qt.LeftButton,Qt.LeftButton,Qt.NoModifier))
+    assert win.tabs.currentWidget() is win.logo_workspace
+    view.mouseDoubleClickEvent(QMouseEvent(QEvent.MouseButtonDblClick,point,point,Qt.LeftButton,Qt.LeftButton,Qt.NoModifier))
+    assert win.tabs.currentWidget() is editor
+    assert (editor.table.currentRow(), editor.table.currentColumn()) == (2,2)
+    assert win.preview.slider.value()==before
     view.set_busy(True)
     assert view.credit_at(point) is None
     win.close()
@@ -72,4 +87,5 @@ def test_arranged_wrapped_lines_keep_source_cell():
     build=prepare(p)
     names=[r for r in regions(build.layout,p.look) if r.row==2 and r.target=='name']
     assert len(names)>1
+    assert all(r.column==1 for r in names)
     assert all(r.contains((r.box[0]+r.box[2])/2,(r.box[1]+r.box[3])/2) for r in names)

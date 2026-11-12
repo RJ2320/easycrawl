@@ -144,7 +144,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(sp):
-        sp.add_argument("source", help="sheet (.csv/.xlsx) or project (.crawl.json)")
+        sp.add_argument("source", help="spreadsheet, Word document, text PDF, delimited text or project (.crawl.json)")
         sp.add_argument("--sheet", help="worksheet name in a workbook (default: the likeliest one)")
         sp.add_argument("--columns", help="which columns hold role, heading and names, e.g. B,C,D or A,B,C-E")
         sp.add_argument("--start-row", type=int, dest="start_row", help="first row of credits (rows above are skipped)")

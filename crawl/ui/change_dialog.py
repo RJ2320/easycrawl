@@ -1,4 +1,5 @@
 """Review the client's changes before they go into the crawl."""
+from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 
 from PySide6.QtCore import Qt
@@ -9,7 +10,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QHeaderV
 from .. import changes as changes_mod
 from . import theme
 
-KIND_LABELS = {"change": "Changed", "add": "Added", "remove": "Removed"}
+KIND_LABELS = {"move": "Move credit", "change": "Changed", "add": "Added", "remove": "Removed"}
 
 
 def _lines(rows) -> str:
@@ -42,6 +43,79 @@ def _incoming_boundary(current, incoming, position):
     return len(incoming)
 
 
+def revision_labels(changes,current,incoming,heading_rows=()):
+    """Describe review decisions without changing which rows each decision applies."""
+    old_positions,new_positions=defaultdict(list),defaultdict(list)
+    for rows,positions in ((current or [],old_positions),(incoming or [],new_positions)):
+        for i,row in enumerate(rows,1):
+            if any(row):
+                positions[tuple(row)].append(i)
+    old_names,new_names=defaultdict(list),defaultdict(list)
+    for rows,names in ((current or [],old_names),(incoming or [],new_names)):
+        for i,row in enumerate(rows,1):
+            for name in row[2].splitlines():
+                if name.strip():
+                    names[name.strip()].append(i)
+    incoming_text={changes_mod.row_text(r).casefold() for r in incoming or [] if any(r)}
+    result=[]
+    for change in changes:
+        if change.kind=="move":
+            result.append(("Move credit",change.describe()))
+            continue
+        labels=[];details=[]
+        if change.capitalization_only:
+            labels.append("Capitalization")
+        else:
+            for values,other,own,first,side in (
+                    (change.old,new_positions,old_positions,change.start+1,"incoming"),
+                    (change.new,old_positions,new_positions,change.sheet_row,"current")):
+                for offset,row in enumerate(values):
+                    key=tuple(row)
+                    if len(other.get(key,()))==len(own.get(key,()))==1 and other[key][0]!=first+offset:
+                        labels.append("Credit moved")
+                        details.append(f"{changes_mod.row_text(row)} · {side} row {other[key][0]}")
+            for index,row in enumerate(change.old,change.start):
+                if (incoming is not None and (_heading(row) or index in heading_rows)
+                        and changes_mod.row_text(row).casefold() not in incoming_text
+                        and not any(_heading(item) for item in change.new)):
+                    labels.append("Section heading removed")
+                    details.append(changes_mod.row_text(row))
+            # Unequal diff hunks can contain both a spelling edit and a moved row.
+            # Pair an old credit only with an unambiguous matching role in that hunk.
+            for old in change.old:
+                candidates=[r for r in change.new if old[0] and old[:2]==r[:2]]
+                if len(change.old)==len(change.new)==1:
+                    new=change.new[0]
+                elif len(candidates)==1 and sum(r[:2]==old[:2] for r in change.old)==1:
+                    new=candidates[0]
+                else:
+                    continue
+                if old[:2]==new[:2] and old[2]!=new[2]:
+                    for name in set(old[2].splitlines())-set(new[2].splitlines()):
+                        previous=old_names.get(name,[])
+                        revised=new_names.get(name,[])
+                        if len(previous)==len(revised)==1 and previous!=revised:
+                            labels.append("Name moved")
+                            details.append(f"{name} · current row {previous[0]} → incoming row {revised[0]}")
+                before=[s for cell in old for s in cell.splitlines() if s]
+                after=[s for cell in new for s in cell.splitlines() if s]
+                if before!=after and Counter(before)==Counter(after):
+                    labels.append("Names reordered")
+                else:
+                    for a,b in zip(old,new):
+                        if a!=b and a and b:
+                            if a.casefold()==b.casefold():
+                                labels.append("Capitalization")
+                            elif not _heading(old) and SequenceMatcher(None,a.casefold(),b.casefold()).ratio()>=0.66:
+                                labels.append("Possible spelling edit")
+                            else:
+                                continue
+                            details.append(f"{a} → {b}")
+        result.append((" · ".join(dict.fromkeys(labels)) or KIND_LABELS[change.kind],
+                       "\n".join(dict.fromkeys(details))))
+    return result
+
+
 class ChangeDialog(QDialog):
     """A checklist of changes. `accepted_changes()` after exec() gives the ticked ones."""
 
@@ -50,6 +124,9 @@ class ChangeDialog(QDialog):
         self.changes = list(changes)
         self.current_rows = [tuple(r) for r in current_rows] if current_rows is not None else None
         self.incoming_rows = [tuple(r) for r in incoming_rows] if incoming_rows is not None else None
+        editor=getattr(parent,'sheet_editor',None)
+        headings={row for row,kind in editor.table.row_kinds.items() if kind=='Heading'} if editor else set()
+        self.labels=revision_labels(self.changes,self.current_rows,self.incoming_rows,headings)
         self.setWindowTitle("Update from revised sheet")
         self.resize(1200, 780)
 
@@ -79,7 +156,8 @@ class ChangeDialog(QDialog):
         for i, change in enumerate(self.changes):
             if change.conflict:
                 change.accepted = False
-            kind = QTableWidgetItem(("Capitalization" if change.capitalization_only else KIND_LABELS[change.kind]) + ("  · review your edit" if change.conflict else ""))
+            kind = QTableWidgetItem(self.labels[i][0] + ("  · review your edit" if change.conflict else ""))
+            kind.setToolTip(self.labels[i][1])
             kind.setFlags(kind.flags() | Qt.ItemIsUserCheckable)
             kind.setCheckState(Qt.Checked if change.accepted else Qt.Unchecked)
             if change.conflict:
@@ -87,6 +165,8 @@ class ChangeDialog(QDialog):
                 kind.setToolTip("These rows were also edited in the app. Applying replaces that edit "
                                 "with the client's version; untick to keep yours.")
             where = str(change.start + 1) if change.end - change.start <= 1 else f"{change.start + 1}–{change.end}"
+            if change.kind=="move":
+                where=f"Row {change.start+1} → incoming row {change.sheet_row}"
             row_item = QTableWidgetItem(where if change.kind != "add" else (f"after row {change.start}" if change.start else "at beginning"))
             old = QTableWidgetItem(_lines(change.old) if change.old else "—")
             new = QTableWidgetItem(_lines(change.new) if change.new else "—")
@@ -104,6 +184,7 @@ class ChangeDialog(QDialog):
         self.detail_title = QLabel()
         self.detail_title.setWordWrap(True)
         self.detail_note = QLabel()
+        self.detail_note.setTextFormat(Qt.PlainText)
         self.detail_note.setWordWrap(True)
         self.detail_note.setProperty("role", "caption")
         detail_panels = QSplitter(Qt.Horizontal)
@@ -205,12 +286,16 @@ class ChangeDialog(QDialog):
         if not 0 <= row < len(self.changes):
             return
         change = self.changes[row]
-        outcome = ({"add":"Add these rows", "remove":"Remove these rows", "change":"Replace with incoming cells"}[change.kind]
+        outcome = ({"move":"Move to incoming position", "add":"Add these rows", "remove":"Remove these rows", "change":"Replace with incoming cells"}[change.kind]
                    if change.accepted else "Keep current credits; skip this change")
-        self.detail_title.setText(f"Change {row+1} of {len(self.changes)} · {KIND_LABELS[change.kind]} · {outcome}")
+        self.detail_title.setText(f"Change {row+1} of {len(self.changes)} · {self.labels[row][0]} · {outcome}")
         self.choice_button.setText("Keep current instead" if change.accepted else "Use incoming change")
         self.detail_note.setText(("Both versions changed these rows. Using incoming will replace your local edit. " if change.conflict else "") +
                                 "Highlighted cells differ. Row numbers refer to each version separately; — means no row or an empty cell.")
+        if self.labels[row][1]:
+            lines=self.labels[row][1].splitlines()
+            self.detail_note.setText(self.detail_note.text()+"\n"+"\n".join(lines[:3])+
+                                    (f"\n{len(lines)-3} more details in the change tooltip." if len(lines)>3 else ""))
         if self.current_rows is not None and self.incoming_rows is not None:
             self._show_context(change)
             return

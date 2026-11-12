@@ -25,17 +25,6 @@ def latest_import_text(project):
     return f"Last brought in: {source_name(last)}{sheet}\n{import_time(last.get('imported_at'))} · {last['action']}"
 
 
-def compact_source_text(project):
-    if project.source_url:kind='Google Sheet'
-    elif Path(project.source).suffix.lower() in ('.xlsx','.xlsm'):kind='Excel'
-    elif project.source:kind='CSV'
-    else:return 'No sheet imported'
-    name=project.sheet or Path(project.source).name
-    name=name.replace('\n',' ')
-    if len(name)>36:name=name[:33]+'…'
-    return kind+(' · '+name if name else '')
-
-
 class ImportHistoryDialog(QDialog):
     def __init__(self, project, parent=None):
         super().__init__(parent)

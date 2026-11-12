@@ -126,8 +126,12 @@ class SheetNotFound(ValueError):
         self.name, self.available = name, available
 
 
+SHEET_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".numbers", ".docx", ".pdf")
+SOURCE_FILTER = "Credit sources (" + " ".join("*" + suffix for suffix in SHEET_SUFFIXES) + ");;All files (*)"
+
+
 def is_workbook(path: str) -> bool:
-    return Path(path).suffix.lower() in (".xlsx", ".xlsm")
+    return Path(path).suffix.lower() in (".xlsx", ".xlsm", ".numbers")
 
 
 def read_rows(path: str, sheet: Optional[str] = "Crawl") -> List[Row]:
@@ -157,6 +161,16 @@ def read_sheet(path: str, sheet: Optional[str] = "Crawl", columns: str = "",
 def read_grid(path: str, sheet: Optional[str] = None) -> List[List[str]]:
     """The sheet's cells as text, columns A onward, one list per row."""
     p = Path(path)
+    if p.suffix.lower() == ".numbers":
+        tables = _numbers_tables(p)
+        if sheet and sheet not in tables and sheet != "Crawl":
+            raise SheetNotFound(sheet,list(tables))
+        name = sheet if sheet in tables else guess_sheet([_sheet_info(k,v) for k,v in tables.items()])
+        return tables[name]
+    if p.suffix.lower() == ".docx":
+        return _word_grid(p)
+    if p.suffix.lower() == ".pdf":
+        return _pdf_grid(p)
     if is_workbook(path):
         return _read_xlsx_grid(p, sheet)
     return _read_csv_grid(p)
@@ -164,8 +178,10 @@ def read_grid(path: str, sheet: Optional[str] = None) -> List[List[str]]:
 
 def sheets(path: str) -> List[SheetInfo]:
     """The worksheets in a file, with how much is on each."""
+    if Path(path).suffix.lower() == ".numbers":
+        return [_sheet_info(k,v) for k,v in _numbers_tables(Path(path)).items()]
     if not is_workbook(path):
-        return [_sheet_info("", _read_csv_grid(Path(path)))]
+        return [_sheet_info("", read_grid(path))]
     import openpyxl
     wb = openpyxl.load_workbook(path, read_only=False, data_only=True)
     try:
@@ -307,8 +323,74 @@ def _cell(v) -> str:
 
 
 def _read_csv_grid(p: Path) -> List[List[str]]:
-    with open(p, newline="", encoding="utf-8-sig") as f:
-        return [[_cell(v) for v in raw[:MAX_COLS]] for raw in csv.reader(f)]
+    import io
+    raw = p.read_bytes()
+    encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
+    content = raw.decode(encoding)
+    if p.suffix.lower() == ".txt" and "\t" not in content:
+        return [[_cell(line)] for line in content.splitlines()]
+    delimiter = "\t" if p.suffix.lower() in (".tsv", ".txt") else ","
+    return [[_cell(v) for v in row[:MAX_COLS]] for row in csv.reader(io.StringIO(content,newline=""),delimiter=delimiter)]
+
+
+def _numbers_tables(path):
+    from numbers_parser import Document
+    tables = {}
+    for sheet in Document(str(path)).sheets:
+        for table in sheet.tables:
+            name = f"{sheet.name} / {table.name}"
+            while name in tables:
+                name += " (2)"
+            tables[name] = [[_cell(v) for v in row[:MAX_COLS]] for row in table.rows(values_only=True)]
+    if not tables:
+        raise ValueError("This Numbers document has no tables.")
+    return tables
+
+
+def _document_row(values, heading=False):
+    values = [_cell(v) for v in values]
+    if heading:
+        return ["", "", " ".join(v for v in values if v)]
+    if len(values)==2:
+        return ["",values[0],"",values[1]]
+    return ["", *values[:MAX_COLS-1]]
+
+
+def _word_grid(path):
+    from docx import Document
+    from docx.text.paragraph import Paragraph
+    grid=[]
+    for block in Document(path).iter_inner_content():
+        if isinstance(block,Paragraph):
+            grid.append(_document_row(block.text.split("\t"),block.style.name.startswith("Heading")))
+        else:
+            for row in block.rows:
+                cells=[];previous=None
+                for cell in row.cells:
+                    cells.append("" if cell._tc is previous else cell.text)
+                    previous=cell._tc
+                grid.append(_document_row(cells))
+    if not any(any(row) for row in grid):
+        raise ValueError("This Word document has no credit text in its paragraphs or tables.")
+    return grid
+
+
+def _pdf_grid(path):
+    from pypdf import PdfReader
+    grid=[]
+    for number,page in enumerate(PdfReader(path).pages,1):
+        content=page.extract_text(extraction_mode="layout",layout_mode_space_vertically=False)
+        if not content.strip():
+            if page.images:
+                raise ValueError(f"PDF page {number} contains artwork or scanned text without a text layer. Run OCR or import the original document.")
+            continue
+        for line in content.splitlines():
+            values=re.split(r" {3,}|\t+",line.strip())
+            heading=len(values)==1 and values[0].isupper()
+            grid.append(_document_row(values,heading))
+    if not any(any(row) for row in grid):
+        raise ValueError("This PDF has no selectable credit text. Run OCR or import the original document.")
+    return grid
 
 
 def _read_xlsx_grid(p: Path, sheet: Optional[str]) -> List[List[str]]:

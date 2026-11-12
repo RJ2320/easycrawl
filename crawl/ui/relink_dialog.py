@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (QDialog, QLabel, QVBoxLayout, QHBoxLayout, QTableWidget,
                                QTableWidgetItem, QPushButton, QComboBox, QFileDialog, QHeaderView)
-from .. import relink
+from .. import ingest, relink
 
 
 class SearchWorker(QThread):
@@ -94,7 +94,7 @@ class RelinkDialog(QDialog):
         from ..logo_import import LOGO_FILTER
         from .logo_import import prepare_logo_files
         path, _ = QFileDialog.getOpenFileName(self, 'Choose replacement', '',
-                                             'Sheets (*.csv *.xlsx *.xlsm)' if self.items[row]['key'] == 'source'
+                                             ingest.SOURCE_FILTER if self.items[row]['key'] == 'source'
                                              else LOGO_FILTER)
         if path:
             if self.items[row]['key']!='source':
