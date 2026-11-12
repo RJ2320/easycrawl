@@ -274,3 +274,28 @@ def test_reset_one_setting_preserves_mixed_values(monkeypatch):
     e.undo()
     assert all(v['alignment']=='right' for v in p.cell_formats)
     e.close()
+
+def test_no_wrap_toolbar_and_explicit_break_in_paired_names(monkeypatch):
+    from PySide6.QtWidgets import QDialog,QPlainTextEdit,QPushButton
+    from crawl.ui.main_window import MainWindow
+    value="One unusually long full credit with several words"
+    p=Project(rows=[[value,'','Second name']],overrides=[dict(start=0,end=0,kind='names_inward')])
+    p.look.list_width=400
+    win=MainWindow(p);win._debounce.stop()
+    e=win.sheet_editor;e.table.setCurrentCell(0,0)
+    nav=win.workspace_navigation
+    nav.no_wrap.click()
+    def rendered():
+        return [line.text for line in layout(load_crawl(p),p.look).lines if line.column==0]
+    assert rendered()==[value]
+    def edit(dialog):
+        entry=dialog.findChild(QPlainTextEdit)
+        cursor=entry.textCursor();cursor.setPosition(3);entry.setTextCursor(cursor)
+        next(b for b in dialog.findChildren(QPushButton) if b.text()=='Insert line break').click()
+        return QDialog.Accepted
+    monkeypatch.setattr(QDialog,'exec',edit)
+    nav.line_breaks.click()
+    assert [s.strip() for s in rendered()]==['One',value[4:]]
+    e.undo();assert rendered()==[value]
+    nav.no_wrap.click();assert len(rendered())>1
+    win._debounce.stop();win._unsaved=False;win.close()

@@ -22,6 +22,18 @@ class WorkspaceNavigation(QWidget):
         bold.setToolTip('Bold selected text');bold.setAccessibleName('Bold selected text')
         bold.clicked.connect(lambda checked:self.editor.apply_bold(checked))
         self.bold=bold;buttons.addWidget(bold);self.text_tools.append(bold)
+        self.no_wrap=QToolButton()
+        self.no_wrap.setText("No wrap")
+        self.no_wrap.setCheckable(True)
+        self.no_wrap.setAccessibleName("No wrap for selected text")
+        self.no_wrap.setToolTip("Keep selected text on one line in the crawl, even past title safe. Manual line breaks are preserved. Click again to use the section default.")
+        self.no_wrap.clicked.connect(lambda checked:self.editor.apply_cell_format({'wrap':False if checked else None}))
+        buttons.addWidget(self.no_wrap);self.text_tools.append(self.no_wrap)
+        self.line_breaks=QToolButton()
+        self.line_breaks.setText("Line breaks…")
+        self.line_breaks.setToolTip("Choose where the selected credit starts a new line")
+        self.line_breaks.clicked.connect(self.editor.edit_line_breaks)
+        buttons.addWidget(self.line_breaks)
         for alignment in ('left','center','right'):
             pixmap=QPixmap(24,24);pixmap.fill(Qt.transparent)
             painter=QPainter(pixmap);painter.setPen(QPen(QColor('#dce4ef'),2))
@@ -118,6 +130,9 @@ class WorkspaceNavigation(QWidget):
         self.format.setVisible(not logo);self.logos.setVisible(logo)
         self.format.setEnabled(bool(selected))
         for tool in self.text_tools:tool.setEnabled(bool(cells) and not logo)
+        self.line_breaks.setEnabled(len(cells)==1 and not logo)
+        self.no_wrap.setChecked(bool(cells) and all(any(item['start']<=r<=item['end'] and item['column']==c and item.get('wrap') is False
+            for item in self.window.project.cell_formats) for r,c in cells))
         self.bold.setChecked(bool(cells) and all(any(item['start']<=r<=item['end'] and item['column']==c and item.get('bold')
             for item in self.window.project.cell_formats) for r,c in cells))
 

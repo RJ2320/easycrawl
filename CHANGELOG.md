@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.23
+
+- Fit the B, C and D credit columns to the available pane width at launch and on resize.
+- Add No wrap and Line breaks controls beside Bold for individual credits.
+
 ## 0.3.22
 
 - Export whole-crawl or single-section review PDFs from File → Export.

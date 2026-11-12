@@ -121,6 +121,15 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
     def put(s: str, style: str, x: int, anchor: str, y: float, source_row=None, column=None, bounds=None) -> None:
         nonlocal bottom
         row = b.row if source_row is None else source_row
+        # A legal or thanks entry can stack several spreadsheet cells in one
+        # block. Honor each cell's wrap choice before joining its rendered lines.
+        if column is None and style in ('legal','list','header','song') and crawl.source_rows and 0 < row <= len(crawl.source_rows):
+            parts=[(c,v) for c,v in enumerate(crawl.source_rows[row-1]) if v]
+            if len(parts)>1 and any('wrap' in formats.get((row,c),{}) for c,_ in parts):
+                if value=="\n".join(v for _,v in parts):
+                    return [line for c,v in parts for line in lines_for(style,v,width,row,c,default)]
+                if value==" ".join(v for _,v in parts) and any(formats.get((row,c),{}).get('wrap') is False for c,_ in parts):
+                    return value.split('\n')
         column = source_column(style, row) if column is None else column
         st = styled(style, row, column)
         ascent, descent = text.metrics(st)
@@ -217,7 +226,7 @@ def layout(crawl: Crawl, look: Look, flex: float = 1.0, column_width=None, align
                     role_lines=lines_for(role_style,label,column_width or look.music_width,b.row,default=False)
                     if len(role_lines)>1 or (column_width and label_width + gap > column_width * .7):
                         if len(role_lines)==1:
-                            role_lines=text.wrap(styles[role_style],label,column_width)
+                            role_lines=lines_for(role_style,label,column_width,b.row)
                         for role_line in role_lines:
                             put(role_line, role_style, 0 if alignment == "left" else look.center_x,
                                 "ls" if alignment == "left" else "ms", pen)

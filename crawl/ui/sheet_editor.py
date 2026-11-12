@@ -11,7 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QItemSelectionModel
 from PySide6.QtGui import QAction, QColor, QFontMetrics, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-                               QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
+                               QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
                                QStackedLayout, QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -890,6 +890,34 @@ class SheetEditor(QWidget):
             item.setToolTip(kind['description']+'\nChange the category under Layout; edit local styling under Text formatting.')
             item.setForeground(QColor(theme.ACCENT if kind['manual'] and self._show_row_types else theme.MUTED))
         self.table.sync_centered_rows()
+
+    def edit_line_breaks(self):
+        cells=self._text_cells()
+        if len(cells)!=1:
+            return
+        row,column=cells.pop()
+        original=self.table.item(row,column).text()
+        dialog=QDialog(self)
+        dialog.setWindowTitle(f"Line breaks · {'BCD'[column]}{row+1}")
+        dialog.resize(540,240)
+        layout=QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Click between words, then choose Insert line break."))
+        editor=QPlainTextEdit(original)
+        editor.setAccessibleName("Credit text")
+        editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+        layout.addWidget(editor)
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        insert=buttons.addButton("Insert line break",QDialogButtonBox.ActionRole)
+        def insert_break():
+            editor.insertPlainText("\n")
+            editor.setFocus()
+        insert.clicked.connect(insert_break)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        editor.setFocus()
+        if dialog.exec()==QDialog.Accepted and editor.toPlainText()!=original:
+            self._set_cells({(row,column):editor.toPlainText()})
 
     def apply_bold(self, enabled=True):
         from ..text import FontError

@@ -631,7 +631,7 @@ class MainWindow(QMainWindow):
         tabs.currentChanged.connect(self._workspace_changed)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
-        split.setSizes([540, 960])
+        split.setSizes([640, 860])
 
         central = QWidget()
         column = QVBoxLayout(central)

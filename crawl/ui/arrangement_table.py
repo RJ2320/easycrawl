@@ -251,18 +251,19 @@ class ArrangementTable(QTableWidget):
         self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)
         header.setHighlightSections(False)
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         header.setMinimumSectionSize(80)
-        self._sized = False
+        self._column_shares = (0.40, 0.24, 0.36)
+        self._fitting_columns = False
         # Wrapping depends on column width, so row heights are re-measured after
         # the columns settle (not on every pixel of a drag).
         self._remeasure = QTimer(self)
         self._remeasure.setSingleShot(True)
         self._remeasure.setInterval(120)
         self._remeasure.timeout.connect(self._remeasure_rows)
-        header.sectionResized.connect(lambda *_: self._remeasure.start())
+        header.sectionResized.connect(self._column_resized)
 
     # ---- lookups the delegate paints from ----------------------------------
 
@@ -347,14 +348,32 @@ class ArrangementTable(QTableWidget):
         # Its final geometry has already been measured; avoid a second full pass.
         self._remeasure.stop()
 
+    def _column_resized(self, *_):
+        if not self._fitting_columns:
+            widths = [self.columnWidth(c) for c in range(3)]
+            if sum(widths):
+                self._column_shares = tuple(w / sum(widths) for w in widths)
+        self._remeasure.start()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if not self._sized and self.viewport().width() > 200:
-            # First layout: roles and names wide, the header column narrower.
-            width = self.viewport().width()
-            self.setColumnWidth(0, int(width * 0.40))
-            self.setColumnWidth(1, int(width * 0.24))
-            self._sized = True
+        # Qt can resize the viewport several times during startup as the row
+        # labels, splitter and vertical scrollbar settle.
+        if not hasattr(self, '_column_shares') or self._fitting_columns:
+            return
+        width = self.viewport().width()
+        minimum = min(80, width // 3)
+        if minimum < 1:
+            return
+        first = min(width - 2 * minimum, max(minimum, round(width * self._column_shares[0])))
+        second = min(width - first - minimum, max(minimum, round(width * self._column_shares[1])))
+        self._fitting_columns = True
+        try:
+            self.horizontalHeader().setMinimumSectionSize(minimum)
+            for col, size in enumerate((first, second, width-first-second)):
+                self.setColumnWidth(col, size)
+        finally:
+            self._fitting_columns = False
 
     def move_current(self, d_row: int, d_col: int):
         row = min(max(0, self.currentRow() + d_row), self.rowCount() - 1)

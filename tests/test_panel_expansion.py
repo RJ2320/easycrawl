@@ -58,3 +58,19 @@ def test_expansion_and_row_measurement_keep_scroll_anchor():
     assert window.size()==original_size
     assert window._expanded_panel is None
     window.close()
+
+
+def test_three_credit_columns_fit_after_opening_and_resizing():
+    from PySide6.QtTest import QTest
+    from crawl.project import Project
+    app=QApplication.instance() or QApplication([])
+    w=MainWindow(Project(rows=[['Role','','Name']]*80))
+    w._debounce.stop();w.show()
+    table=w.sheet_editor.table
+    for pane in (None,440,720):
+        if pane:
+            w._panel_split.setSizes([pane,1500-pane])
+        QTest.qWait(170)
+        assert table.columnViewportPosition(2)+table.columnWidth(2)==table.viewport().width()
+        assert table.horizontalScrollBar().maximum()==0
+    w.close()
