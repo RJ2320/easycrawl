@@ -87,7 +87,6 @@ class LogoWorkspace(QWidget):
         self.note.setWordWrap(True)
         form = QFormLayout()
         form.addRow('Logo block', self.section)
-        form.addRow('Preview',self.preview_mode)
         grid=QWidget();grid_form=QFormLayout(grid)
         grid_form.addRow('Logos per row',self.columns)
         grid_form.addRow('Space between columns',self.gap)
@@ -141,7 +140,11 @@ class LogoWorkspace(QWidget):
         caption.setText('Select logos in the list, or Shift-click artwork. Drag to reposition; Alt / Option bypasses snapping.')
         canvas_layout.addWidget(caption)
         self.alignment_buttons={}
-        tools=QHBoxLayout()
+        self.viewer_toolbar=QWidget()
+        tools=QHBoxLayout(self.viewer_toolbar)
+        tools.setContentsMargins(10,4,10,4)
+        tools.addWidget(QLabel('View'))
+        tools.addWidget(self.preview_mode)
         for title,entries in [('Align',[('Align left edges','left'),('Align horizontal centers','center_x'),
               ('Align right edges','right'),('Align top edges','top'),('Align vertical centers','center_y'),('Align bottom edges','bottom')]),
               ('Distribute',[('Space evenly left to right','distribute_x'),('Space evenly top to bottom','distribute_y')])]:
@@ -153,8 +156,8 @@ class LogoWorkspace(QWidget):
                 button.setEnabled(False);button.clicked.connect(lambda checked=False,key=key:self.align_selected(key))
                 icons.addWidget(button);self.alignment_buttons[key]=button
             group.addLayout(icons);tools.addLayout(group)
-        tools.addStretch(1);layout.addLayout(tools)
-        self.selection_count=QLabel('Select two or more logos to align');layout.addWidget(self.selection_count)
+        tools.addStretch(1)
+        self.selection_count=QLabel('Select two or more logos to align');tools.addWidget(self.selection_count)
         canvas_layout.addWidget(self.view, 1)
         canvas_layout.addWidget(self.inspector)
         self.section.currentIndexChanged.connect(self._section_changed)

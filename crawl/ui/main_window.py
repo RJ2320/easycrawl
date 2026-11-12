@@ -610,7 +610,13 @@ class MainWindow(QMainWindow):
         self.preview_stack = QStackedWidget()
         self.preview_stack.addWidget(self.preview)
         self.preview_stack.addWidget(self.logo_workspace.canvas)
-        split.addWidget(self.preview_stack)
+        self.viewer_panel=QWidget()
+        viewer_layout=QVBoxLayout(self.viewer_panel)
+        viewer_layout.setContentsMargins(0,0,0,0);viewer_layout.setSpacing(0)
+        viewer_layout.addWidget(self.logo_workspace.viewer_toolbar)
+        self.logo_workspace.viewer_toolbar.hide()
+        viewer_layout.addWidget(self.preview_stack,1)
+        split.addWidget(self.viewer_panel)
         tabs.currentChanged.connect(self._workspace_changed)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
@@ -701,6 +707,7 @@ class MainWindow(QMainWindow):
         if panel == "sheet":
             self.tabs.setCurrentWidget(self.sheet_editor)
             self.preview_stack.hide()
+            self.viewer_panel.hide()
             self.sheet_editor.expand_button.setIcon(panel_expand_icon(restoring=True))
             self.sheet_editor.expand_button.setAccessibleName("Restore spreadsheet")
             self.sheet_editor.expand_button.setToolTip("Return to the normal layout (Esc)")
@@ -725,6 +732,7 @@ class MainWindow(QMainWindow):
         self._exit_expansion.setEnabled(False)
         self.tabs.show()
         self.preview_stack.show()
+        self.viewer_panel.show()
         self.tabs.tabBar().show()
         self._app_header.show()
         self.tabs.setCurrentIndex(tab)
@@ -1979,6 +1987,7 @@ class MainWindow(QMainWindow):
 
     def _workspace_changed(self, *_):
         active = self.tabs.currentWidget() is self.logo_workspace
+        self.logo_workspace.viewer_toolbar.setVisible(active)
         arranged=active and self.logo_workspace.preview_mode.currentData()=='arrange'
         self.preview_stack.setCurrentIndex(1 if arranged else 0)
         if active:
