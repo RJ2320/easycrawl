@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal, QItemSelectionModel,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from .logo_canvas import LogoCanvas
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog)
+                              QPushButton, QComboBox, QListWidget, QFileDialog, QMessageBox, QAbstractItemView,QToolButton,QInputDialog,QStyle)
 from .. import ingest
 from .widgets import LogoBar, _spin
 
@@ -111,11 +111,15 @@ class LogoWorkspace(QWidget):
         buttons = QHBoxLayout()
         self.move_buttons = {}
         for label, direction in [('Move earlier', -1), ('Move later', 1)]:
-            button = QPushButton(label)
+            button = QToolButton()
+            button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp if direction==-1 else QStyle.SP_ArrowDown))
+            button.setAccessibleName(label)
+            button.setToolTip(label+' in the credit order')
             button.clicked.connect(lambda checked=False, d=direction: self.reorder(d))
             button.setEnabled(False)
             self.move_buttons[direction] = button
             buttons.addWidget(button)
+        buttons.addStretch(1)
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         actions=QHBoxLayout();actions.addWidget(add);actions.addWidget(library)

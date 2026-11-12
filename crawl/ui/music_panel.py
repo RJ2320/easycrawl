@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLabel, QScrollArea, QCheckBox
 from .widgets import StyleEditor, _spin, resettable, default_look
+from .workspace_navigation import StyleDisclosure
 
 
 class MusicPanel(QWidget):
@@ -37,12 +38,15 @@ class MusicPanel(QWidget):
             control.valueChanged.connect(self._apply)
         layout.addLayout(form)
         self.editors = {}
+        self.style_disclosures=[]
         for key, label in [('song', 'Song titles (centered)'), ('music_role', 'Music labels (before names)'),
                            ('music_name', 'Music names (after the label)')]:
             editor = StyleEditor(label, getattr(project.look, key))
             editor.defaults = lambda key=key: getattr(default_look(self.project), key)
             self.editors[key] = editor
-            layout.addWidget(editor)
+            disclosure=StyleDisclosure(editor)
+            self.style_disclosures.append(disclosure)
+            layout.addWidget(disclosure)
             editor.changed.connect(self.changed)
             self.advanced_toggle.toggled.connect(editor.advanced.setVisible)
         layout.addWidget(self.advanced_geometry)
@@ -65,6 +69,7 @@ class MusicPanel(QWidget):
             control.blockSignals(False)
         for key, editor in self.editors.items():
             editor.load(getattr(self.project.look, key))
+        for disclosure in self.style_disclosures:disclosure.refresh()
 
     def _apply(self, *_):
         for key, control in self.controls.items():

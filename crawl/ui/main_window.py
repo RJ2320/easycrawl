@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
                                QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
                                QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QRadioButton,
                                QScrollArea, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget,
-                               QVBoxLayout, QWidget)
+                               QVBoxLayout, QWidget,QStyle)
 
 from .. import export, gsheets, ingest, project as proj
 from ..timing import frames_to_tc, tc_to_frames
@@ -296,7 +296,8 @@ class LookPanel(QWidget):
 
         inner = QWidget()
         il = QVBoxLayout(inner)
-        note = QLabel("Shared font settings for the row types shown in Credits. Position labels describe the normal layout. "
+        note = QLabel("Project text styles. Expand a style to adjust fonts and spacing.")
+        note.setToolTip("Shared font settings for the row types shown in Credits. Position labels describe the normal layout. "
                       "A row marked * has local text styling, which can override these defaults. "
                       "Use Credits → Layout → Text formatting for individual changes. "
                       "Spacing is measured in output pixels; Fit runtime may scale vertical spacing.")
@@ -404,6 +405,10 @@ class OutputPanel(QWidget):
         self.fps.setToolTip("Frames per second. The runtime stays the same; the frame count follows.")
         self.out_dir = QLineEdit()
         self.browse = QPushButton("…")
+        self.browse.setText('')
+        self.browse.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
+        self.browse.setToolTip('Choose output folder')
+        self.browse.setAccessibleName('Choose output folder')
         self.basename = QLineEdit()
         self.version_output = QCheckBox("Use the next version number (v001, v002…)")
         self.version_output.setToolTip("Finds the next available version in the output folder when export starts.")
@@ -1013,6 +1018,9 @@ class MainWindow(QMainWindow):
         self.auto_apply_action.setChecked(self._settings().value("google/auto_apply", False, type=bool))
         self.auto_apply_action.setToolTip("Apply changes while watching. In master mode the Google Sheet supplies all credit text; "
                                           "with master mode off, conflicting local text edits are held for review.")
+        google=m.addMenu('Google Sheet')
+        for action in (self.refresh_action,self.master_source_action,self.watch_action,self.auto_apply_action):
+            m.removeAction(action);google.addAction(action)
         self.import_options_action = self._act(m, "Import Options…", None, self.import_options)
         self.import_options_action.setToolTip("Which worksheet, columns and start row the credits are read from")
         self._act(m, "Reload Sheet (discard edits)", QKeySequence.Refresh,
@@ -1022,13 +1030,15 @@ class MainWindow(QMainWindow):
         self._act(m, "Save Project As…", QKeySequence.SaveAs, lambda: self.save_project(True))
         self.snapshots_action = self._act(m, "Version Snapshots…", None, self.version_snapshots)
         self.snapshots_action.setToolTip("Save, rename and restore named project milestones")
-        self._act(m, "Collect Files into Project Folder", None, self.collect_files).setToolTip(
+        assets=m.addMenu('Project files')
+        self._act(assets, "Collect Files into Project Folder", None, self.collect_files).setToolTip(
             "Copy the sheet and logo artwork next to the project so the folder can be moved or shared")
         m.addSeparator()
-        self._act(m, "Relink Missing Files…", None, self.relink_files)
+        self._act(assets, "Relink Missing Files…", None, self.relink_files)
         m.addSeparator()
-        self._act(m, "Save Look As…", None, self.save_look)
-        self._act(m, "Load Look…", None, self.load_look)
+        presets=m.addMenu('Look presets')
+        self._act(presets, "Save Look As…", None, self.save_look)
+        self._act(presets, "Load Look…", None, self.load_look)
         m.addSeparator()
         self._act(m, "Quit", QKeySequence.Quit, self.close)
         self._rebuild_recent_menu()
@@ -1042,11 +1052,12 @@ class MainWindow(QMainWindow):
         self._act(e, "Copy", None, lambda: self._edit("copy"))
         self._act(e, "Paste", None, lambda: self._edit("paste"))
         e.addSeparator()
-        self._act(e, "Insert Row Above", "Ctrl+Alt+Up", lambda: self._sheet(lambda s: s.insert_rows(above=True)))
-        self._act(e, "Insert Row Below", "Ctrl+Alt+Down", lambda: self._sheet(lambda s: s.insert_rows(above=False)))
-        self._act(e, "Insert Rows Above…", None, lambda: self._sheet(lambda s: s.insert_rows_dialog(above=True)))
-        self._act(e, "Insert Rows Below…", None, lambda: self._sheet(lambda s: s.insert_rows_dialog(above=False)))
-        self._act(e, "Delete Rows", "Ctrl+Alt+Backspace", lambda: self._sheet(lambda s: s.delete_rows()))
+        rows=e.addMenu('Rows')
+        self._act(rows, "Insert Row Above", "Ctrl+Alt+Up", lambda: self._sheet(lambda s: s.insert_rows(above=True)))
+        self._act(rows, "Insert Row Below", "Ctrl+Alt+Down", lambda: self._sheet(lambda s: s.insert_rows(above=False)))
+        self._act(rows, "Insert Rows Above…", None, lambda: self._sheet(lambda s: s.insert_rows_dialog(above=True)))
+        self._act(rows, "Insert Rows Below…", None, lambda: self._sheet(lambda s: s.insert_rows_dialog(above=False)))
+        self._act(rows, "Delete Rows", "Ctrl+Alt+Backspace", lambda: self._sheet(lambda s: s.delete_rows()))
         e.addSeparator()
         self._act(e, "Dismiss Problem", "Ctrl+D", lambda: self._sheet(lambda s: s.dismiss(
             None if s.finding_index >= 0 else s._selected_finding_indices())))
@@ -1057,8 +1068,9 @@ class MainWindow(QMainWindow):
         self._act(v, "Previous Section", "Ctrl+Up", lambda: self.preview.slider.jump(-1))
         self._act(v, "Next Section", "Ctrl+Down", lambda: self.preview.slider.jump(1))
         v.addSeparator()
+        guides=v.addMenu('Guides')
         for action in self.preview.guide_actions:
-            v.addAction(action)
+            guides.addAction(action)
 
         v.addSeparator()
         gpu = self._act(v, "GPU Preview (restart to apply)", None, lambda: None)
