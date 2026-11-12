@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Simplify the workspace with top navigation for Look, Timing and Export settings, compact text tools, and consolidated menus.
+- Display section headings and logo blocks across the spreadsheet row without moving source cells; add subtle row-type colors.
+- Replace the logo block dropdown with a collapsible numbered thumbnail list and block count.
+- Add contextual crawl viewing, alignment and distribution icons, exact pair spacing and pair centering; keep logo adjustments above the viewer.
+- Make logo spacing consistent while retaining explicitly marked spacing rows; prevent following names-only and music rows from overlapping.
+- Cache repeated font measurements to reduce layout rebuild delays without changing rendered geometry.
+- Clarify source importing, keep recent projects, and move import history beside the source name.
+
 ## 0.3.20
 
 - Preserve fractional horizontal font advances so music labels and names retain exact spacing across platforms.

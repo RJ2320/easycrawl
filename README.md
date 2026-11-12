@@ -87,9 +87,9 @@ Export, with the preview on the right and the **Export** button always in the he
   *List in columns* forces a list even for a short run; *Centred lines* sets one centred line per
   row; *Automatic* clears it. Overridden rows carry a grey bar at the left.
 
-  **Side by side…** sets two or more groups next to each other. Select rows across the groups
+  **Layout → Arrange sections in columns…** sets two or more groups next to each other. Select rows across the groups
   (blank rows separate them), choose 2–6 columns, a gap, alignment and a label. A blue outline with
-  a labelled band marks the arrangement; put the cursor inside it and the button becomes **Edit**.
+  a labelled band marks the arrangement; put the cursor inside it to edit the arrangement from Layout.
   Blocks fill left to right and align at the top; an incomplete last row is centred.
 
   **Layout → Logo block…** converts selected cells into logo entries in their existing
@@ -171,7 +171,7 @@ Export, with the preview on the right and the **Export** button always in the he
   Mark multiple thanks sections separately to give them different layouts. Markings
   save with the project, support undo, and shift when rows are inserted or deleted.
 
-- **Google Sheets** — **File → Open Google Sheet…** (Ctrl+Shift+G), or drop or paste the link
+- **Google Sheets** — **File → Import Google Sheet…** (Ctrl+Shift+G), or drop or paste the link
   on the window. The sheet must be shared as *Anyone with the link* (Viewer is enough): the app
   downloads the whole workbook, every tab, and reads it like a file, so no Google sign-in is
   needed. The download is kept with the project (in its `_assets` folder once saved), so the
@@ -482,14 +482,14 @@ In the Logos tab, **Replace selected logo**, **Add logo**, **Remove logo**,
 removes selected slots from the current section, supports undo and keeps original
 artwork files. Shared logos in other sections stay assigned.
 
-The Credits toolbar contains **Rows**, **Layout**, **Side by side…** and the expand
-icon. **Layout** includes Music, Logo block and Logo library. **Rows → Review and
-export** holds preview-following, dismissed-warning and change-mark controls. CSV export is under Export.
-Side by side arranges whole credit groups next to each other; section layouts set
-the type and name columns within a section.
+The Credits toolbar contains **Rows**, **Layout** and the expand icon. Formatting,
+bold, alignment and reset-to-section-style controls sit above it. Layout marks
+section types and arranges sections in columns; artwork comes from **Logos → Logo
+library**. **Rows → Review** holds preview-following, dismissed-warning and
+change-mark controls. CSV export is under Export.
 
 Drag entries up or down in the Logos list to reorder the credit grid, or use
-**Move earlier / Move later**. Multiple selected logos move together in their
+the up/down order icons. Multiple selected logos move together in their
 existing order. Reordering updates the list immediately, saves with the project
 and supports undo; the first move creates a logo grid if needed. Canvas dragging
 continues to adjust position rather than list order.
@@ -500,19 +500,19 @@ for preview selection, warnings and revision merges; hidden status saves with th
 project and follows local row edits and undo. Older saved projects can recover hidden
 status from a matching cached workbook without changing their credit text.
 
-**Layout → Names only / alignment → Left, Center or Right** treats each populated
+**Layout → Name column layout → Left, Center or Right** treats each populated
 cell in the selected rows as a name. Use it for paired names in B/C or B/D, or a
 standalone name. Both columns inherit the shared name font, size and line spacing;
 each name aligns within its column, and multiline names wrap independently.
 **Layout → Automatic** restores the usual role/name interpretation.
 
-**Layout → Text formatting → Bold selected cells** adds a bold override to the
-selected cells. **Use section default** removes that override. These choices save
+The **B** toolbar button adds a bold override to the
+selected cells. The **Use section style** reset icon clears local text overrides. These choices save
 with the project, support undo, and follow inserted rows and sheet updates. Bold
 uses the font family's bold face and does not edit the Google Sheet or saved credit
 text. The preview and exports include the override.
 
-**Layout → Text formatting → Format selected cells…** also overrides font, size,
+The **Text formatting…** toolbar button also overrides font, size,
 font color, line spacing, left/center/right alignment, italic and uppercase for selected text
 cells. Check an option to override it; unchecked options inherit the section style.
 Size changes scale line spacing unless line spacing is overridden too. These local
@@ -578,12 +578,12 @@ the left column and names leftward in the right column, using the normal credit
 gutter and typography. It accepts populated role/name pairs and overrides automatic
 or explicit compact music formatting for the selected rows.
 
-**File → Recent projects** reopens saved crawls with their layouts, artwork and
-timing. **Recent source sheets** separately lists inputs for starting/importing
-credits; source imports do not evict saved projects. Project names omit the file
-extension, and Google Sheets use associated project names where available. Use
-**Recent source sheets → Name current Google Sheet…** to give a link a friendly
-label. Duplicate cached downloads are hidden when the live link is already listed.
+**File → Open Project…** resumes a saved crawl. **Recent projects** lists saved
+crawls with their layouts, artwork and timing. To start from a source, use **Import
+Excel / CSV…** or **Import Google Sheet…**. For later revisions, use **Update from
+Revised Sheet…** or **Google Sheet → Refresh from Google Sheet**. Source imports do
+not evict saved projects. **Import history…** beside the source name shows import
+dates and review decisions.
 
 For paired Special thanks lists, choose **Name order → Match spreadsheet columns**.
 Left and right entries remain paired on their source rows, including missing cells;
@@ -592,11 +592,10 @@ and D are the name columns. New paired sections default to this mode. Existing
 sections retain their saved mode until changed. Across rows and Down each column
 remain available for rearranging a single-column source list.
 
-The Credits toolbar and right-click menu share the same **Layout** commands.
-Right-click row insertion/deletion is grouped under **Rows**; the older generic
-**List in columns** option is under **Layout → More layouts**. Music and logo grids
-show **Edit music layout…** or **Edit logo grid…**, opening their dedicated editors
-instead of the generic Side by side dialog.
+The Credits toolbar and right-click menu share section markings. Right-click row
+insertion/deletion is grouped under **Rows**. The automatic column-list layout is
+**Layout → Name list in columns…**. Selected music and logo blocks expose their
+own editor commands rather than the generic section-column dialog.
 
 **Export → Export Credits as CSV…** is the single menu location for source-text
 export. The main export command follows the selected codec or PNG sequence format,
@@ -618,3 +617,19 @@ headings. **Clear explicit spacing** restores normal blank-row handling. The gap
 height follows Look's blank-row spacing and runtime scaling. Text rows are never
 hidden or emptied by this action. Marks save with the project, support undo and
 follow row insertions, deletions and source updates.
+
+### Compact workspace
+
+**Look**, **Timing**, and **Export settings** are in the top header; the left tabs
+are Credits and Logos. The active header button is highlighted. **View → Jump to
+section…** (Ctrl+J) opens the section finder. Headings and logos span the full
+spreadsheet row visually, preserving their source cells. Subtle row colors help
+identify block types; selection and warnings take priority.
+
+On Logos, the collapsed block chooser shows **Block 1**, **Block 2**, etc. and the
+total block count. Expand it for thumbnails and logo counts; hover for source
+headings and rows. The viewer toolbar switches between **See in crawl** and
+**Arrange logos**, and contains Layout, Align, Distribute, Set gap and Center pair.
+Pair tools require exactly two selected logos. Distribute requires at least three
+and retains the outer logos. Logo size, position and tone controls sit above the
+viewer. Instructions are available in tooltips.
