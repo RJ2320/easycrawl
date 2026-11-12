@@ -76,6 +76,19 @@ class LogoWorkspace(QWidget):
         self.block_search=QLineEdit();self.block_search.setPlaceholderText('Find a logo block…')
         self.block_search.setClearButtonEnabled(True);self.block_search.hide()
         self.block_search.textChanged.connect(self._filter_blocks)
+        self.block_toggle=QToolButton()
+        self.block_toggle.setCheckable(True)
+        self.block_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.block_toggle.setArrowType(Qt.RightArrow)
+        self.block_toggle.setText('Choose logo block')
+        self.block_toggle.setAccessibleName('Choose logo block')
+        self.block_chooser=QWidget()
+        chooser_layout=QVBoxLayout(self.block_chooser);chooser_layout.setContentsMargins(0,0,0,0)
+        chooser_layout.addWidget(self.block_search);chooser_layout.addWidget(self.block_list)
+        self.block_chooser.hide()
+        self.block_toggle.toggled.connect(self._toggle_block_chooser)
+        self.block_list.itemClicked.connect(lambda *_:self.block_toggle.setChecked(False))
+        self.block_list.itemActivated.connect(lambda *_:self.block_toggle.setChecked(False))
         self.preview_mode=QComboBox()
         self.preview_mode.addItem('See in crawl','crawl')
         self.preview_mode.addItem('Arrange logos','arrange')
@@ -123,10 +136,9 @@ class LogoWorkspace(QWidget):
             buttons.addWidget(button)
         buttons.addStretch(1)
         layout = QVBoxLayout(self)
-        blocks_header=QHBoxLayout();blocks_header.addWidget(QLabel('Logo blocks'))
-        blocks_header.addWidget(self.block_count);blocks_header.addStretch(1)
-        layout.addLayout(blocks_header);layout.addWidget(self.block_search)
-        layout.addWidget(self.block_list)
+        blocks_header=QHBoxLayout();blocks_header.addWidget(self.block_toggle,1)
+        blocks_header.addWidget(self.block_count)
+        layout.addLayout(blocks_header);layout.addWidget(self.block_chooser)
         actions=QHBoxLayout();actions.addWidget(add);actions.addWidget(library)
         layout.addLayout(actions)
         layout.addWidget(self.note)
@@ -265,6 +277,12 @@ class LogoWorkspace(QWidget):
             item=self.block_list.item(index)
             item.setHidden(bool(needle and needle not in item.data(Qt.UserRole)))
 
+    def _toggle_block_chooser(self,expanded):
+        self.block_chooser.setVisible(expanded)
+        self.block_toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        if expanded and self.block_list.currentItem():
+            self.block_list.scrollToItem(self.block_list.currentItem())
+
     def arrangement(self):
         section = self.current()
         return next((item for item in self.project.arrangements if section and
@@ -272,6 +290,10 @@ class LogoWorkspace(QWidget):
 
     def _section_changed(self, *_):
         section = self.current()
+        title=(section.get('heading') or ', '.join(section['labels'])) if section else 'Choose logo block'
+        summary=title if len(title)<=44 else title[:41]+'…'
+        self.block_toggle.setText(summary)
+        self.block_toggle.setToolTip(title+'\nClick to change logo block')
         cfg = self.arrangement() or {}
         labels = section['labels'] if section else []
         order = cfg.get('logo_order', [])
