@@ -94,14 +94,12 @@ class LogoWorkspace(QWidget):
         self.preview_mode.addItem('Arrange logos','arrange')
         self.preview_mode.setToolTip('See surrounding credits, or use the focused logo arrangement canvas.')
         self.artwork = LogoOrderList()
-        self.artwork.setToolTip("Drag logos up or down to change their order in the credits.")
+        self.artwork.setToolTip("Select artwork to adjust it. Ctrl / Cmd-click to select several. Drag logos up or down to change their credit order.")
         self.artwork.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.columns = _spin(1, 6, '')
         self.columns.setValue(3)
         self.gap = _spin(0, 1000, ' px')
         self.gap.setValue(120)
-        self.note = QLabel('Choose a logo section, or add artwork at the selected spreadsheet row.')
-        self.note.setWordWrap(True)
         grid=QWidget();grid_form=QFormLayout(grid)
         grid_form.addRow('Logos per row',self.columns)
         grid_form.addRow('Space between columns',self.gap)
@@ -110,8 +108,10 @@ class LogoWorkspace(QWidget):
         apply = QPushButton('Apply logo grid')
         apply.clicked.connect(self.apply_grid)
         library = QPushButton('Logo library…')
+        library.setToolTip('Choose saved or common artwork to add to the current logo block')
         library.clicked.connect(self.open_library)
         add = QPushButton('Add logo…')
+        self.add_button=add
         add.clicked.connect(self.add_artwork)
         replace_button = QPushButton('Replace selected logo…')
         self.replace_button = replace_button
@@ -141,7 +141,6 @@ class LogoWorkspace(QWidget):
         layout.addLayout(blocks_header);layout.addWidget(self.block_chooser)
         actions=QHBoxLayout();actions.addWidget(add);actions.addWidget(library)
         layout.addLayout(actions)
-        layout.addWidget(self.note)
         layout.addWidget(grid_toggle);layout.addWidget(grid)
         grid_form.addRow(apply)
         layout.addWidget(QLabel('Artwork in selected block'))
@@ -152,13 +151,10 @@ class LogoWorkspace(QWidget):
         layout.addWidget(show)
         self.canvas = QWidget()
         canvas_layout = QVBoxLayout(self.canvas)
-        caption = QLabel('Logo layout · drag artwork to position it; select a logo to adjust size and tone.')
-        caption.setWordWrap(True)
         self.view = LogoCanvas()
         self.inspector = LogoBar()
         self.inspector.show()
-        caption.setText('Select logos in the list, or Shift-click artwork. Drag to reposition; Alt / Option bypasses snapping.')
-        canvas_layout.addWidget(caption)
+        self.view.setToolTip('Select logos in the list, or Shift-click artwork. Drag to reposition; Alt / Option bypasses snapping. Use the top controls for size, position and tone.')
         self.alignment_buttons={}
         self.viewer_toolbar=QWidget()
         tools=QHBoxLayout(self.viewer_toolbar)
@@ -246,12 +242,12 @@ class LogoWorkspace(QWidget):
         self.sections = sections
         self.block_list.blockSignals(True)
         self.block_list.clear()
-        for item in sections:
+        for index,item in enumerate(sections):
             title=item.get('heading') or ', '.join(item['labels'])
             count=len(item['labels'])
-            entry=QListWidgetItem(f"{title}\n{count} logo{'s' if count!=1 else ''}")
+            entry=QListWidgetItem(f"Block {index+1} · {count} logo{'s' if count!=1 else ''}")
             entry.setToolTip(f"{title}\nRows {item['start']+1}–{item['end']+1}\n"+', '.join(item['labels']))
-            entry.setData(Qt.UserRole,(title+' '+ ' '.join(item['labels'])).casefold())
+            entry.setData(Qt.UserRole,(f'Block {index+1} '+title+' '+ ' '.join(item['labels'])).casefold())
             layers=getattr(self.build,'logo_layers',{}) if self.build else {}
             cached=next((layers.get(label) or self._layer_cache.get(label) for label in item['labels']
                          if layers.get(label) or self._layer_cache.get(label)),None)
@@ -291,9 +287,10 @@ class LogoWorkspace(QWidget):
     def _section_changed(self, *_):
         section = self.current()
         title=(section.get('heading') or ', '.join(section['labels'])) if section else 'Choose logo block'
-        summary=title if len(title)<=44 else title[:41]+'…'
+        summary=f'Block {self.block_list.currentRow()+1}' if section else 'Choose logo block'
         self.block_toggle.setText(summary)
-        self.block_toggle.setToolTip(title+'\nClick to change logo block')
+        location=f"\nRows {section['start']+1}–{section['end']+1}" if section else ''
+        self.block_toggle.setToolTip(title+location+'\nClick to change logo block')
         cfg = self.arrangement() or {}
         labels = section['labels'] if section else []
         order = cfg.get('logo_order', [])
@@ -304,8 +301,8 @@ class LogoWorkspace(QWidget):
         self.artwork.blockSignals(False)
         self.columns.setValue(cfg.get('columns', 3))
         self.gap.setValue(cfg.get('gap', 120))
-        self.note.setText(f"Add logo inserts after this block (row {section['end']+1}). Drag the list to reorder. Select artwork to adjust it."
-                          if section else 'No logo section yet. Add artwork at the selected spreadsheet row.')
+        self.add_button.setToolTip(f"Add artwork after this block (row {section['end']+1})."
+                          if section else 'Create a logo block at the selected spreadsheet row.')
         self._draw()
         self.inspector.load('', {})
         self.request_context()

@@ -40,13 +40,16 @@ def test_block_list_count_filter_and_source_navigation():
                  ['','SECOND',''],['[Logo: C]','','']])
     workspace=LogoWorkspace(p,editor);workspace.refresh()
     assert workspace.block_count.text()=='2' and workspace.block_list.count()==2
-    assert workspace.block_list.item(0).text()=='FIRST\n2 logos'
+    assert workspace.block_list.item(0).text()=='Block 1 · 2 logos'
+    assert workspace.block_toggle.text()=='Block 1'
     assert 'Rows 2' in workspace.block_list.item(0).toolTip()
     workspace._filter_blocks('SECOND')
     assert workspace.block_list.item(0).isHidden() and not workspace.block_list.item(1).isHidden()
     requests=[];workspace.preview_requested.connect(lambda row,label:requests.append(row))
     workspace.select_source_row(3)
     assert workspace.current()['labels']==['C'] and requests[-1]==4
+    assert workspace.block_toggle.text()=='Block 2'
+    assert 'SECOND' in workspace.block_toggle.toolTip()
     assert workspace.block_count.text()=='2'
     workspace.close();editor.close()
 
