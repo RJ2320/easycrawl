@@ -1,3 +1,3 @@
 """Crawl — turn a credits sheet into a finished end-crawl movie."""
 
-__version__ = "0.3.20"
+__version__ = "0.3.21"

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.21
 
 - Simplify the workspace with top navigation for Look, Timing and Export settings, compact text tools, and consolidated menus.
 - Display section headings and logo blocks across the spreadsheet row without moving source cells; add subtle row-type colors.
