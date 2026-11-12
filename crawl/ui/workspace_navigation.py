@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter,QPen,QColor
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,
-                               QPushButton,QGroupBox,QAbstractItemView,QToolButton)
+                               QPushButton,QGroupBox,QAbstractItemView,QToolButton,QStyle)
 from ..model import Header,LogoRow
 
 
@@ -35,6 +35,12 @@ class WorkspaceNavigation(QWidget):
             tool.setToolTip(f'Align selected text {alignment}');tool.setAccessibleName(f'Align selected text {alignment}')
             tool.clicked.connect(lambda checked=False,value=alignment:self.editor.apply_cell_format({'alignment':value}))
             buttons.addWidget(tool);self.text_tools.append(tool)
+        self.reset_style=QToolButton()
+        self.reset_style.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        self.reset_style.setToolTip('Use section style\nClear manual text formatting from the selected cells; keep their content and layout.')
+        self.reset_style.setAccessibleName('Use section style')
+        self.reset_style.clicked.connect(lambda:self.editor.apply_cell_format({},reset=True))
+        buttons.addWidget(self.reset_style);self.text_tools.append(self.reset_style)
         buttons.addStretch(1)
         layout.addLayout(buttons)
         row=QHBoxLayout();row.addWidget(QLabel('Jump to section'))

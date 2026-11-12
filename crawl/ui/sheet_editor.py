@@ -813,7 +813,7 @@ class SheetEditor(QWidget):
                 continue
             action=menu.addAction(label,lambda checked=False,k=kind:self._apply_layout_to_selection(k))
             action.setCheckable(True);action.setData(kind)
-        names = menu.addMenu('Names only / alignment')
+        names = menu.addMenu('Name column layout')
         for alignment, label in [('left', 'Left'), ('center', 'Center'), ('right', 'Right'),('inward','Face center (like roles / names)')]:
             kind = 'names_' + alignment
             action = names.addAction(label, lambda checked=False, k=kind: self._apply_layout_to_selection(k))
@@ -870,7 +870,7 @@ class SheetEditor(QWidget):
                         action.setVisible(valid)
             if context:
                 names.menuAction().setVisible(any(action.isVisible() for action in names.actions()))
-                advanced.menuAction().setVisible(any(action.isVisible() for action in advanced.actions()))
+                advanced.menuAction().setVisible(False)
                 formatting.menuAction().setVisible(False)
             show_types.blockSignals(True);show_types.setChecked(self._show_row_types);show_types.blockSignals(False)
         menu.aboutToShow.connect(update)
